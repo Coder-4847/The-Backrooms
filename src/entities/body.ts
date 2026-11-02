@@ -105,7 +105,7 @@ function sculptHuman(sc: Sculptor, P: Proportions, D: Dress): HumanRig {
         if (t > 0.2 && t < 0.45) m -= gaunt * 0.12 * front * smooth(0.2, 0.3, t) * smooth(0.45, 0.38, t);
         // spine groove + shoulder blades
         m -= back * Math.exp(-Math.pow(Math.cos(a) * 6, 2)) * 0.05;
-        if (t > 0.65 && t < 0.92) m += back * 0.05 * Math.sin(((t - 0.65) / 0.27) * Math.PI) * (1 - Math.exp(-Math.pow(Math.cos(a) * 3, 2)));
+        if (t > 0.6 && t < 0.82) m += back * 0.025 * Math.sin(((t - 0.6) / 0.22) * Math.PI) * (1 - Math.exp(-Math.pow(Math.cos(a) * 3, 2)));
         // chest / pectorals
         if (t > 0.6 && t < 0.85 && !D.shirt) m += front * 0.03 * Math.sin(((t - 0.6) / 0.25) * Math.PI) * (1 - gaunt);
         return m;
@@ -161,8 +161,8 @@ function sculptHuman(sc: Sculptor, P: Proportions, D: Dress): HumanRig {
   const handPos: Vector3[] = [];
   [-1, 1].forEach((sx, i) => {
     const s0 = sc.jointPos(sh[i]), e0 = sc.jointPos(el[i]), w0 = sc.jointPos(wr[i]);
-    sc.sweep([V(sx * sw * 0.6, ySh + 0.03 * k, 0.012 * k), s0, e0, w0],
-      [0.06 * th, 0.058 * th * (1 - gaunt * 0.3), 0.048 * th * (1 - gaunt * 0.35), 0.04 * th * (1 - gaunt * 0.3), 0.043 * th * (1 - gaunt * 0.4), 0.03 * th],
+    sc.sweep([V(sx * sw * 0.55, ySh - 0.015 * k, 0.012 * k), s0, e0, w0],
+      [0.048 * th, 0.052 * th * (1 - gaunt * 0.3), 0.048 * th * (1 - gaunt * 0.35), 0.04 * th * (1 - gaunt * 0.3), 0.043 * th * (1 - gaunt * 0.4), 0.03 * th],
       {
         slot: armSlot, stops: [[0, chest], [0.18, sh[i]], [0.52, sh[i]], [0.62, el[i]], [0.97, el[i]], [1, wr[i]]],
         mod: (t, a) => 1 + (t > 0.25 && t < 0.55 ? Math.sin(((t - 0.25) / 0.3) * Math.PI) * 0.08 * Math.max(0, Math.sin(a)) * (1 - gaunt) : 0) + (gaunt > 0.4 && Math.abs(t - 0.6) < 0.05 ? 0.25 * gaunt : 0),

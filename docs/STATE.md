@@ -7,7 +7,7 @@
 | Command | Purpose |
 |---|---|
 | `npm run dev` | dev server (add `?debug=1` to any build to enable the backtick debug console + `window.__game`) |
-| `npm test` | Vitest (257 tests, incl. Phase 5: Anchors, secret, achievements, unlocks, NG+; Phase 4: Act 3 levels, open levels, cold, schedule, 8 new entity labs, chase fairness, finale; Phase 3: Act 2 levels, water/breath, darkness, light sections, sequence puzzle, 7 new entity labs; Phase 2: Act 1 levels, puzzles, new entities, crafting, tools, companion, rules): rng, difficulty, saves, settings/input, quality, endings skeleton, generation + validators, mesher/streamer, textures, reverb, collision, bot, sim, **inventory, stats/sanity/hallucinations, lights, noise, Director, Entity Lab AI scenarios, Level 0 in the real sim, hub** |
+| `npm test` | Vitest (262 tests, incl. visuals: light bake, lamp grid, body builds per tier; incl. Phase 5: Anchors, secret, achievements, unlocks, NG+; Phase 4: Act 3 levels, open levels, cold, schedule, 8 new entity labs, chase fairness, finale; Phase 3: Act 2 levels, water/breath, darkness, light sections, sequence puzzle, 7 new entity labs; Phase 2: Act 1 levels, puzzles, new entities, crafting, tools, companion, rules): rng, difficulty, saves, settings/input, quality, endings skeleton, generation + validators, mesher/streamer, textures, reverb, collision, bot, sim, **inventory, stats/sanity/hallucinations, lights, noise, Director, Entity Lab AI scenarios, Level 0 in the real sim, hub** |
 | `npm run validate:levels [-- --seeds=200 --level=id]` | all validators over N seeds + the autopilot bot on 40 seeds; pass/fail table |
 | `npm run bot -- --level=placeholder --seed=123 [--waypoints --difficulty=hard]` | headless autopilot run |
 | `npm run smoke` | Playwright e2e of the real flow: settings persistence, New Game -> hub, dialogue gives an item, inventory panel, door panel -> Level 0, hiding, hound tell-before-bite, death -> rewind -> respawn, note reader, level completion -> hub with next door unlocked |
@@ -16,6 +16,15 @@
 | `npm run mobile` | emulated phone (touch, portrait + landscape): layout fits, no horizontal scroll, touch controls appear, no page errors |
 | `npm run balance [-- --seeds=3]` | balance report: every level x easy/normal/nightmare with a dumb bot, active entities, no god mode |
 | `npm run verify` | typecheck + lint + tests + level validators (what CI runs, plus build) |
+
+## Visual overhaul (post Phase 5)
+- **Lighting like a lightmapped engine:** `render/bake.ts` bakes, at load, irradiance from *every* ceiling lamp, first-bounce indirect light per room (leaking through doors) and a room-box geometry map; `render/surface.ts` patches every level material (Standard and Lambert, so Potato gets it too) to add the baked light beyond the real-time pool's radius, bounce everywhere, and analytic corner AO (floor/wall/ceiling seams, room corners). Breakers re-bake.
+- **Renderer:** AgX tone mapping, GPU eye adaptation (`render/exposure.ts`: 64-tap metering in a 1x1 pass, fast to bright, slow to dark), re-tuned bloom (lamps only), SMAA on tiers without MSAA, per-level reflection probe (cube capture of the real level -> PMREM).
+- **Materials:** rewritten procedural textures (tileable quintic noise, Worley, domain-warped stains, Sobel normals, cavity AO), a world-scale macro map (grime, big water stains, wet glossy carpet) so 2 m tiles never visibly repeat, textures 2048 on Ultra / 1024 High / 512 Medium / 256 Low / 128 Potato, streamed (512 first, full size on a background worker so chunk meshing never waits).
+- **Geometry detail:** suspended-ceiling T-bar grid aligned with the acoustic tile texture (Medium+), 2x4 troffers snapped to the grid with a prismatic diffuser, door casings, solid baseboards.
+- **Characters:** `entities/sculpt.ts` builds each body as one SkinnedMesh on a bone rig (variable-radius sweeps with ribs/muscles/knuckles, sculpted skull with sockets, brow, nose, cheekbones, jaw; fingers on High+), Physical skin/cloth (sheen, clearcoat, detail normal maps) on High+. The Stick is a 2.8 m emaciated faceless figure, Hounds crawl like people on all fours with matted hair and a working jaw, coworkers wear shirt, tie, trousers and shoes, the Howler is a hunched blind giant. Geometry is cached per body type and tier.
+- **Viewmodel:** first-person hand holding the flashlight (sways, bobs, lowers when hidden); the beam starts at the lens and projects a reflector/lens-grime cookie on High+.
+- Budgets still met (Potato level 0: 32 draw calls, 3k tris). Ultra load time 3.5 s in SwiftShader (was ~16 s before streaming moved to its own worker).
 
 ## Built in Phase 5
 - **Endings content:** all six endings have text and an ending sting; the Architect's decisions + run state go through `resolveEnding`; seen endings are recorded in the profile and shown in the **Ending Gallery** (title menu and the hub gallery door). Loop restarts at Level 0 with a new seed.
