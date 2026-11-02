@@ -11,6 +11,7 @@ import { CAMPAIGN } from '../levels/campaign';
 import { doorState, type HubState } from '../levels/hubObjects';
 import { DIFFICULTIES, DIFFICULTY_ORDER, type DifficultyId } from '../core/difficulty';
 import { fmtTime } from './dom';
+import { RECIPES, canCraft, craft, discover } from '../systems/crafting';
 import { randomSeedString } from '../gen/rng';
 import type { Game } from '../core/game';
 
@@ -60,7 +61,7 @@ export function inventoryPanel(game: Game, close: () => void): HTMLElement {
     stats.textContent = `Weight ${inv.weight.toFixed(1)} kg${inv.weightFactor < 1 ? ` · stamina recovery ×${inv.weightFactor.toFixed(2)}` : ''} · Flashlight ${sim.flash.battery.toFixed(0)}% · Camcorder ${sim.cam.battery.toFixed(0)}%`;
   };
   paint();
-  root.append(h('h2', {}, 'Backpack'), h('div', { class: 'inv-wrap' }, grid, detail), h('h3', {}, 'Hotbar'), hot, stats, h('div', { class: 'btn-row' }, h('button', { class: 'btn', onclick: close }, 'Close')));
+  root.append(h('h2', {}, 'Backpack'), h('div', { class: 'inv-wrap' }, grid, detail), h('h3', {}, 'Hotbar'), hot, stats, h('div', { class: 'btn-row' }, h('button', { class: 'btn primary', onclick: () => { game.ui.openPanel(craftPanel(game, false, () => game.ui.closePanel())); } }, 'Craft'), h('button', { class: 'btn', onclick: close }, 'Close')));
   return root;
 }
 
@@ -83,8 +84,8 @@ export function journalPanel(game: Game, close: () => void): HTMLElement {
   return root;
 }
 
-export function notePanel(id: string, close: () => void): HTMLElement {
-  const n = NOTES[id];
+export function notePanel(id: string, close: () => void, override?: { title: string; text: string }): HTMLElement {
+  const n = override ?? NOTES[id];
   return h('div', { class: 'screen center panel' }, h('h3', {}, n.title), h('p', { class: 'note-text paper' }, n.text), h('button', { class: 'btn primary', onclick: close }, 'Keep reading later (journal)'));
 }
 
@@ -159,4 +160,48 @@ export function stashPanel(game: Game, close: () => void): HTMLElement {
 
 export function infoPanel(title: string, text: string, close: () => void): HTMLElement {
   return h('div', { class: 'screen center panel' }, h('h2', {}, title), h('p', {}, text), h('button', { class: 'btn', onclick: close }, 'Close'));
+}
+
+/** Crafting: recipes appear once you have held all their ingredients (discovery); kitchen recipes need the hub kitchen. */
+export function craftPanel(game: Game, kitchen: boolean, close: () => void): HTMLElement {
+  const sim = game.level!.sim, inv = sim.inv;
+  const flags = game.currentSlot?.flags ?? {};
+  const known = new Set(Object.keys(flags).filter((k) => k.startsWith('recipe:')).map((k) => k.slice(7)));
+  for (const id of discover(inv, known)) { flags[`recipe:${id}`] = true; game.ui.toast(`Recipe discovered: ${RECIPES.find((r) => r.id === id)!.name}`); }
+  const root = h('div', { class: 'screen panel' }, h('h2', {}, kitchen ? 'Kitchen' : 'Crafting'));
+  const list = h('div', { class: 'jlist' });
+  const paint = () => {
+    clear(list);
+    const shown = RECIPES.filter((r) => known.has(r.id) || canCraft(inv, r, kitchen));
+    if (!shown.length) list.append(h('p', { class: 'muted' }, 'Nothing to make yet. Pick up odds and ends (rags, bottles, rope, cans, paper) and recipes show up here.'));
+    for (const r of shown) {
+      const ok = canCraft(inv, r, kitchen);
+      const needs = Object.entries(r.in).map(([id, n]) => `${itemDef(id).name} ×${n}${inv.count(id) >= n ? '' : ' (missing)'}`).join(', ');
+      list.append(h('div', { class: 'row' }, h('div', { class: 'row-label' }, r.name, h('small', {}, `${needs}${r.station ? ' · kitchen' : ''}`), h('small', {}, r.hint)),
+        h('button', { class: 'btn small' + (ok ? ' primary' : ''), disabled: !ok, onclick: () => { if (craft(inv, r, kitchen)) { flags[`recipe:${r.id}`] = true; game.level!.sim.emit({ type: 'use', item: r.id }); game.ui.toast(`Made: ${r.name}`); } else game.ui.toast('Not enough room', 'warn'); paint(); } }, 'Make')));
+    }
+  };
+  paint();
+  root.append(list, h('div', { class: 'btn-row' }, h('button', { class: 'btn', onclick: close }, 'Close')));
+  return root;
+}
+
+/** Talking to a coworker: ask the badge question to tell the real one from the Skin-stealer. */
+export function talkPanel(game: Game, entityId: number, close: () => void): HTMLElement {
+  const sim = game.level!.sim;
+  const v = sim.plan.verify;
+  const root = h('div', { class: 'screen center panel dialogue' }, h('h3', {}, 'Coworker', h('small', {}, 'someone from the floor')));
+  const say = h('p', { class: 'say' }, 'Oh, hey. Another person! Thank God. Stay close, will you? It is not safe to wander alone.');
+  const menu = h('div', { class: 'menu' });
+  const done = (text: string, danger = false) => { say.textContent = text; menu.replaceChildren(h('button', { class: 'btn' + (danger ? ' danger' : ''), onclick: close }, danger ? 'Back away' : 'Okay')); };
+  if (v) menu.append(h('button', { class: 'btn', onclick: () => {
+    const r = sim.x.ask(entityId);
+    if (!r) return done('...');
+    game.soundBank?.blip(r.fake ? 150 : 175);
+    done(`"${r.answer}." ${r.fake ? 'Their smile stays exactly where it was. They are not blinking.' : 'They answer without a pause and blink, relieved.'}`, r.fake);
+  } }, v.question));
+  menu.append(h('button', { class: 'btn', onclick: close }, 'Walk away'));
+  root.append(say, menu);
+  game.soundBank?.blip(160);
+  return root;
 }

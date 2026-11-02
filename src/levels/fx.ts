@@ -21,7 +21,10 @@ export class SceneFx {
     switch (e.type) {
       case 'tell': {
         const out = this.spatial(e.entity.x, e.entity.z, 'voice', 0.1);
-        if (s && out) { if (e.entity.def.id === 'hound') s.growl(out); else s.stickTell(out); }
+        if (s && out) {
+          const id = e.entity.def.id;
+          if (id === 'hound') s.growl(out); else if (id === 'howler') s.scream(out); else if (id === 'concierge') s.bell(out); else if (id === 'monitor') s.whistle(out); else s.stickTell(out);
+        }
         g.glitch = Math.max(g.glitch, 0.25);
         this.svc.input.rumble(0.2, 0.5, 400);
         break;
@@ -41,6 +44,13 @@ export class SceneFx {
       }
       case 'hide': document.body.classList.toggle('hiding', e.on); if (a) bus.emit('toast', { text: e.on ? 'Hiding. Stay quiet.' : 'You step out.' }); break;
       case 'use': s?.click('confirm'); break;
+      case 'throw': { const o = this.spatial(e.x, e.z, 'sfx', 0.1); if (o && s) { s.thud(o, 0.5); setTimeout(() => s.creak(o, 0.3), 80); } break; }
+      case 'alarm': { const o = this.spatial(e.x, e.z, 'sfx', 0.1); if (o && s) s.clatter(o); break; }
+      case 'radio': { const o = this.spatial(e.x, e.z, 'sfx', 0.1); if (o && s) { for (let i = 0; i < 4; i++) setTimeout(() => s.staticBurst(o, 1.0), i * 1500); } bus.emit('toast', { text: 'Radio lure on (20 s). Things will come to it.' }); break; }
+      case 'valve': { if (s && a) s.valve(a.flat('sfx', 0.3)); if (e.solved) bus.emit('toast', { text: 'Valves aligned. Somewhere, a gate unlocks.' }); break; }
+      case 'puzzle': g.glitch = 0.5; break;
+      case 'violation': { if (s && a) s.bell(a.flat('sfx', 0.4)); bus.emit('toast', { text: `You broke a rule: "${e.rule}"`, kind: 'warn' }); g.glitch = 0.7; break; }
+      case 'companion': bus.emit('toast', { text: e.what === 'recruited' ? 'Pim follows you.' : e.what === 'hurt' ? 'Pim is hurt!' : 'Pim is gone.', kind: e.what === 'recruited' ? 'info' : 'warn' }); break;
       case 'flare': bus.emit('toast', { text: 'Flare lit. Something may be drawn to it.' }); break;
       case 'full': bus.emit('toast', { text: 'Backpack full', kind: 'warn' }); break;
       default: break;

@@ -24,6 +24,12 @@ export function simulateReach(plan: LevelPlan): { rooms: Set<number>; keys: Set<
       else if (reached.has(c.b) && !reached.has(c.a)) { reached.add(c.a); changed = true; }
     }
     for (const it of plan.items) if (it.kind === 'key' && it.unlocks && reached.has(it.room) && !keys.has(it.unlocks)) { keys.add(it.unlocks); changed = true; }
+    // a puzzle is solved once every part and its hint note are reachable
+    for (const pz of plan.puzzles ?? []) {
+      if (keys.has(pz.lock)) continue;
+      const note = plan.items.find((i) => i.item === pz.hintNote);
+      if (pz.parts.every((p) => reached.has(p.room)) && note && reached.has(note.room)) { keys.add(pz.lock); changed = true; }
+    }
   }
   return { rooms: reached, keys };
 }
@@ -68,7 +74,7 @@ export function validatePlan(def: Pick<LevelDef, 'targetSeconds'>, plan: LevelPl
   const sim = simulateReach(plan);
   if (!sim.rooms.has(plan.exit.room)) fail('exit unreachable given key order');
   for (const c of plan.connections) if (c.lock) {
-    if (!plan.items.some((i) => i.kind === 'key' && i.unlocks === c.lock)) fail(`lock ${c.lock} has no key`);
+    if (!plan.items.some((i) => i.kind === 'key' && i.unlocks === c.lock) && !(plan.puzzles ?? []).some((p) => p.lock === c.lock)) fail(`lock ${c.lock} has no key or puzzle`);
     if (!sim.keys.has(c.lock)) fail(`key for ${c.lock} unreachable before its lock`);
   }
   for (const it of plan.items) {
@@ -104,6 +110,17 @@ export function validatePlan(def: Pick<LevelDef, 'targetSeconds'>, plan: LevelPl
     if (plan.items.some((i) => Math.hypot(i.pos.x - h.pos.x, i.pos.z - h.pos.z) < 1)) fail(`hide ${h.id} on top of an item`);
   }
   for (const s of plan.entitySlots) if (s.entity && s.role === 'nest' && (plan.criticalPath.slice(0, 2).includes(s.room))) fail('entity nest on the first stretch of the route');
+
+  // props: inside their room, never on nav nodes, doors, items or puzzle parts (so nothing is blocked)
+  const boxDist = (b: { x: number; z: number; w: number; d: number }, x: number, z: number) => Math.hypot(Math.max(Math.abs(x - b.x) - b.w / 2, 0), Math.max(Math.abs(z - b.z) - b.d / 2, 0));
+  for (const b of plan.props ?? []) {
+    if (!R.some((r) => b.x - b.w / 2 >= r.x && b.x + b.w / 2 <= r.x + r.w && b.z - b.d / 2 >= r.z && b.z + b.d / 2 <= r.z + r.d)) fail(`prop ${b.kind} not inside one room`);
+    if (plan.nav.nodes.some((n) => boxDist(b, n.pos.x, n.pos.z) < 0.7)) fail(`prop ${b.kind} blocks a nav node`);
+    if (plan.connections.some((c) => boxDist(b, c.door.x, c.door.z) < 1.4)) fail(`prop ${b.kind} blocks a doorway`);
+    if (plan.items.some((i) => boxDist(b, i.pos.x, i.pos.z) < 0.5) || (plan.puzzles ?? []).some((pz) => pz.parts.some((pt) => boxDist(b, pt.pos.x, pt.pos.z) < 0.6))) fail(`prop ${b.kind} covers an item or valve`);
+    if (plan.waypoints.some((w) => boxDist(b, w.pos.x, w.pos.z) < 0.8)) fail(`prop ${b.kind} covers a waypoint`);
+  }
+  for (const pz of plan.puzzles ?? []) for (const pt of pz.parts) { const r = byId.get(pt.room); if (!r || !inRoom(r, pt.pos, 0.5)) fail(`valve ${pt.id} outside its room`); }
 
   // nav graph
   const N = plan.nav.nodes;

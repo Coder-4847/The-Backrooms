@@ -4,7 +4,7 @@
  * overlays. One instance per loaded level; `dispose()` frees everything.
  */
 import {
-  AmbientLight, Box3, PointLight, BoxGeometry, BufferAttribute, BufferGeometry, Color, CylinderGeometry, FogExp2, Group, InstancedMesh, LineBasicMaterial,
+  AmbientLight, Box3, PointLight, TorusGeometry, BoxGeometry, BufferAttribute, BufferGeometry, Color, CylinderGeometry, FogExp2, Group, InstancedMesh, LineBasicMaterial,
   LineSegments, Matrix4, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, PMREMGenerator, Scene, SpotLight, Vector3, type Material,
 } from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
@@ -49,6 +49,8 @@ export class LevelScene {
   private overlays = new Map<string, Object3D>();
   private itemMeshes = new Map<string, Mesh>();
   private doorMeshes = new Map<number, Mesh>();
+  private propMeshes: InstancedMesh[] = [];
+  private valveMeshes = new Map<string, Mesh>();
   private wpLeds: MeshBasicMaterial[] = [];
   private extras: { dispose(): void }[] = [];
   private tick = 0;
@@ -171,16 +173,41 @@ export class LevelScene {
       m.castShadow = true; m.receiveShadow = true;
       scene.add(m);
     }
+    // props (racks, desks, pipes...): box meshes per kind (instanced by kind)
+    const propGeo = new BoxGeometry(1, 1, 1);
+    this.extras.push(propGeo);
+    const byColor = new Map<number, { x: number; z: number; w: number; d: number; h: number }[]>();
+    for (const pr of plan.props ?? []) (byColor.get(pr.color) ?? byColor.set(pr.color, []).get(pr.color)!).push(pr);
+    for (const [color, list] of byColor) {
+      const mat = new MeshStandardMaterial({ color, roughness: 0.75, metalness: 0.25 });
+      this.extras.push(mat);
+      const inst = new InstancedMesh(propGeo, mat, list.length);
+      list.forEach((pr, i) => { this.tmpM.makeScale(pr.w, pr.h, pr.d).setPosition(pr.x, pr.h / 2, pr.z); inst.setMatrixAt(i, this.tmpM); });
+      inst.castShadow = true; inst.receiveShadow = true;
+      scene.add(inst); this.propMeshes.push(inst);
+    }
+    // puzzle valves: a wheel on a stem that turns with its state
+    for (const pz of plan.puzzles ?? []) for (const pt of pz.parts) {
+      if (sim.keys.has(pz.lock)) break;
+      const g = new Group(); g.position.set(pt.pos.x, 0, pt.pos.z);
+      const stem = new Mesh(new CylinderGeometry(0.06, 0.06, 1.1, 8), new MeshStandardMaterial({ color: 0x3a3a3a, roughness: 0.5, metalness: 0.7 })); stem.position.y = 0.55; g.add(stem);
+      const wheel = new Mesh(new TorusGeometry(0.28, 0.035, 8, 16), new MeshStandardMaterial({ color: 0xa83a2a, roughness: 0.5, metalness: 0.6 })); wheel.rotation.x = Math.PI / 2; wheel.position.y = 1.15; g.add(wheel);
+      scene.add(g); this.valveMeshes.set(pt.id, wheel);
+      this.extras.push({ dispose: () => { stem.geometry.dispose(); (stem.material as MeshStandardMaterial).dispose(); wheel.geometry.dispose(); (wheel.material as MeshStandardMaterial).dispose(); } });
+    }
     if (plan.hub) {
       this.hubObj = buildHubObjects(scene, plan, this.opts.hub!);
       sim.world.add('hubobjs', this.hubObj.colliders);
     }
     const doorGeo = new BoxGeometry(1, 2.2, 0.16);
-    const doorMat = new MeshStandardMaterial({ color: 0x5a1f1a, roughness: 0.6, metalness: 0.3 });
-    this.extras.push(doorGeo, doorMat);
+    const doorMats: Record<string, MeshStandardMaterial> = {
+      key: new MeshStandardMaterial({ color: 0x5a1f1a, roughness: 0.6, metalness: 0.3 }), fuse: new MeshStandardMaterial({ color: 0x1f3a5a, roughness: 0.5, metalness: 0.5, emissive: new Color(0x081428) }),
+      pry: new MeshStandardMaterial({ color: 0x4a4a3a, roughness: 0.8, metalness: 0.4 }), valves: new MeshStandardMaterial({ color: 0x5a3a1a, roughness: 0.5, metalness: 0.6 }),
+    };
+    this.extras.push(doorGeo, ...Object.values(doorMats));
     for (const d of sim.doors.values()) {
       if (d.open) continue;
-      const m = new Mesh(doorGeo, doorMat);
+      const m = new Mesh(doorGeo, doorMats[(d.conn.lock ?? 'key').replace(/\d+$/, '')] ?? doorMats.key);
       m.scale.x = d.conn.width;
       m.position.set(d.conn.door.x, 1.1, d.conn.door.z);
       if (d.conn.axis === 'z') m.rotation.y = Math.PI / 2;
@@ -322,6 +349,7 @@ export class LevelScene {
     this.ev.sync(this.sim.ew, this.time, dt);
     this.fx.update(dt, cam, flashOut > 0.4);
     this.hubObj?.update(this.time, p.x, p.z);
+    for (const [id, w] of this.valveMeshes) w.rotation.z = (this.sim.x.valves.get(id) ?? 0) * (Math.PI / 2);
     const nv = this.sim.cam.nightVision;
     gfx.nightVision = nv; this.ambient.intensity = this.ambientBase * (nv ? 4 : 1);
     // flare + glowstick light (fixed light count: no shader recompiles)
@@ -384,6 +412,7 @@ export class LevelScene {
     this.ev.dispose(); this.hubObj?.dispose();
     for (const h of this.humHandles) h.stop(0.3);
     for (const k of [...this.chunks.keys()]) this.removeChunk(k);
+    this.propMeshes.forEach((m) => { m.dispose(); m.removeFromParent(); });
     this.props?.dispose();
     this.lights.dispose(); this.dust?.dispose(); this.lib.dispose();
     this.extras.forEach((e) => e.dispose());

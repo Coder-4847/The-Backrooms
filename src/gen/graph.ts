@@ -9,7 +9,7 @@
  *  6. Waypoint candidates (off-route, mid-path), nests, loot, nav graph, time estimate.
  */
 import { Rng } from './rng';
-import type { Connection, EntitySlot, ItemSpawn, LevelPlan, NavEdge, NavNode, Room, Vec2, Waypoint } from './types';
+import type { Connection, EntitySlot, ItemSpawn, LevelPlan, NavEdge, NavNode, PuzzleDef, Room, Vec2, Waypoint } from './types';
 
 export interface GraphOptions {
   levelId: string;
@@ -26,6 +26,10 @@ export interface GraphOptions {
   nests: number;
   loot: number;
   doorWidth?: number;
+  /** Lock themes cycled over the locks along the critical path (default: all brass keys). */
+  lockStyles?: ('key' | 'fuse' | 'valves' | 'pry')[];
+  /** Weighted loot table; defaults to batteries/water/bandages/crackers/glowsticks. */
+  lootTable?: [string, number][];
 }
 
 /**
@@ -186,11 +190,16 @@ export function generateGraphLevel(seed: number, o: GraphOptions): LevelPlan {
     if (!lockEdgeIdx.includes(idx)) lockEdgeIdx.push(idx);
   }
   lockEdgeIdx.sort((x, y) => x - y);
-  const locks: { id: string; edge: number; pathIdx: number }[] = lockEdgeIdx.map((pathIdx, i) => ({ id: `key${i + 1}`, edge: critEdges[pathIdx], pathIdx }));
+  const styles = o.lockStyles?.length ? o.lockStyles : (['key'] as const);
+  const styleOf = (i: number) => styles[i % styles.length];
+  const lockPrefix = { key: 'key', fuse: 'fuse', valves: 'valves', pry: 'pry' } as const;
+  const locks: { id: string; edge: number; pathIdx: number; style: 'key' | 'fuse' | 'valves' | 'pry' }[] = lockEdgeIdx.map((pathIdx, i) => ({ id: `${lockPrefix[styleOf(i)]}${i + 1}`, edge: critEdges[pathIdx], pathIdx, style: styleOf(i) }));
   locks.forEach((l) => { connByAdj.get(l.edge)!.lock = l.id; });
 
   // keys: place in a room reachable from spawn without crossing lock i or any later lock; prefer off-path rooms
   const items: ItemSpawn[] = [];
+  let puzzles: PuzzleDef[] | undefined;
+  let noteText: Record<string, { title: string; text: string }> | undefined;
   let itemN = 0;
   const lockEdges = new Set(locks.map((l) => l.edge));
   const roomCenter = (r: Room): Vec2 => ({ x: r.x + r.w / 2, z: r.z + r.d / 2 });
@@ -204,7 +213,21 @@ export function generateGraphLevel(seed: number, o: GraphOptions): LevelPlan {
     const pool = side.length ? side : cands.length ? cands : [spawnRoom];
     // farthest-ish rooms make the detour meaningful: weight by distance
     const room = rItems.weighted(pool.map((r) => [r, 1 + (dist.get(r) ?? 0)] as const));
-    items.push({ id: `item${itemN++}`, item: l.id, kind: 'key', room, pos: randIn(rooms[room], rItems), unlocks: l.id });
+    if (l.style === 'valves') {
+      // puzzle: 3 valves in three different pre-lock rooms plus a hint note that states the solution
+      const picks = rItems.shuffle([...pool]).slice(0, 3);
+      while (picks.length < 3) picks.push(pool[0]);
+      const sol = [rItems.int(1, 3), rItems.int(1, 3), rItems.int(1, 3)];
+      const letters = ['A', 'B', 'C'];
+      const puzzle: PuzzleDef = { id: `puzzle${i}`, kind: 'valves', lock: l.id, hintNote: `valvehint${i}`, solution: sol, parts: picks.map((r, k) => ({ id: `${l.id}${letters[k]}`, room: r, pos: randIn(rooms[r], rItems, 1.5), states: 4 })) };
+      (puzzles ??= []).push(puzzle);
+      const hr = rItems.pick(pool);
+      items.push({ id: `item${itemN++}`, item: puzzle.hintNote, kind: 'note', room: hr, pos: randIn(rooms[hr], rItems) });
+      (noteText ??= {})[puzzle.hintNote] = { title: 'Maintenance tag', text: `VALVE SETTINGS (do not touch)\nA ${sol[0]}   B ${sol[1]}   C ${sol[2]}\n(valves count 0-3, turn clockwise)` };
+      return;
+    }
+    const keyItem = l.style === 'pry' ? 'crowbar' : l.style === 'fuse' ? l.id : l.id;
+    items.push({ id: `item${itemN++}`, item: keyItem, kind: 'key', room, pos: randIn(rooms[room], rItems), unlocks: l.id });
   });
 
   // 5. loops that cannot bypass a lock: only join rooms in the same component of (tree minus locked edges)
@@ -285,7 +308,7 @@ export function generateGraphLevel(seed: number, o: GraphOptions): LevelPlan {
   const lootN = o.loot;
   for (let i = 0; i < lootN; i++) {
     const r = rItems.pick(rooms.filter((x) => x.kind !== 'exit'));
-    items.push({ id: `item${itemN++}`, item: rItems.weighted([['battery', 3], ['almond_water', 3], ['bandage', 2], ['cracker', 2], ['glowstick', 1]]), kind: 'loot', room: r.id, pos: randIn(r, rItems), });
+    items.push({ id: `item${itemN++}`, item: rItems.weighted(o.lootTable ?? [['battery', 3], ['almond_water', 3], ['bandage', 2], ['cracker', 2], ['glowstick', 1]]), kind: 'loot', room: r.id, pos: randIn(r, rItems), });
   }
   // extra supplies in the supply room
   if (supply) for (let i = 0; i < 3; i++) items.push({ id: `item${itemN++}`, item: i === 0 ? 'battery' : i === 1 ? 'almond_water' : 'bandage', kind: 'loot', room: supply.id, pos: randIn(supply, rItems) });
@@ -298,10 +321,11 @@ export function generateGraphLevel(seed: number, o: GraphOptions): LevelPlan {
   for (let i = 0; i + 1 < criticalPath.length; i++) pathMeters += dist2(roomCenter(rooms[criticalPath[i]]), roomCenter(rooms[criticalPath[i + 1]]));
   let detour = 0;
   for (const it of items.filter((x) => x.kind === 'key')) {
-    const lock = locks.find((l) => l.id === it.item)!;
+    const lock = locks.find((l) => l.id === it.unlocks)!;
     const lockRoom = criticalPath[lock.pathIdx];
     detour += 2 * dist2(roomCenter(rooms[it.room]), roomCenter(rooms[lockRoom])) * 1.3;
   }
+  for (const pz of puzzles ?? []) { const lockRoom = criticalPath[locks.find((l) => l.id === pz.lock)!.pathIdx]; for (const pt of pz.parts) detour += 2 * dist2(roomCenter(rooms[pt.room]), roomCenter(rooms[lockRoom])) * 1.3; }
   const estSeconds = (pathMeters * 1.25 + detour) / WALK_SPEED + locks.length * PUZZLE_SECONDS;
 
   const spawnR = rooms[spawnRoom];
@@ -311,7 +335,7 @@ export function generateGraphLevel(seed: number, o: GraphOptions): LevelPlan {
     rooms, connections,
     spawn: { room: spawnRoom, pos: roomCenter(spawnR) },
     exit: { room: exitRoom, pos: roomCenter(rooms[exitRoom]) },
-    criticalPath, waypoints, items, entitySlots,
+    criticalPath, waypoints, items, entitySlots, puzzles, noteText,
     nav,
     estSeconds,
     size: Math.min(1, pathLen / 10),

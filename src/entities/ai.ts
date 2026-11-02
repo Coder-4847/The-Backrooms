@@ -7,6 +7,7 @@
 import { Rng } from '../gen/rng';
 import { NavGraph } from './nav';
 import { ENTITIES, type EntityDef } from './defs';
+import { BEHAVIORS } from './behaviors';
 import type { StaticWorld } from '../core/collision';
 import type { DifficultyDef } from '../core/difficulty';
 import type { NoiseField } from '../systems/noise';
@@ -28,6 +29,8 @@ export interface Entity {
   speed: number; // current commanded speed (for animation)
   /** one-shot flag set when a tell starts, consumed by the audio layer */
   tellStarted: boolean;
+  /** behavior scratch space (timers, flags) */
+  data: Record<string, number | boolean>;
 }
 
 export interface PlayerPercept {
@@ -40,6 +43,8 @@ export interface PlayerPercept {
 export interface AiContext {
   player: PlayerPercept; noise: NoiseField; openLocks: ReadonlySet<string>;
   diff: DifficultyDef; director: Director; mode: 'active' | 'observe';
+  /** Hall pass in the backpack: none, real, or forged (Schoolhouse). */
+  pass?: 'none' | 'real' | 'forged';
 }
 
 export type EntityEvent =
@@ -54,23 +59,26 @@ export class EntityWorld {
   entities: Entity[] = [];
   listeners: ((e: EntityEvent) => void)[] = [];
   readonly nav: NavGraph;
-  private rng: Rng;
+  rng: Rng;
   private hunters = 0;
   private nextId = 1;
+  private removed: Entity[] = [];
+  /** Remove an entity at the end of this update (despawn). */
+  remove(e: Entity): void { if (this.isHunting(e.state)) this.endHunt(); this.removed.push(e); }
 
   constructor(private plan: LevelPlan, private world: StaticWorld, seed: number) {
     this.nav = new NavGraph(plan);
     this.rng = new Rng(seed ^ 0xe17171);
   }
 
-  private emit(e: EntityEvent): void { for (const l of this.listeners) l(e); }
+  emit(e: EntityEvent): void { for (const l of this.listeners) l(e); }
 
   spawn(defId: string, x: number, z: number, pack = 0): Entity {
     const def = ENTITIES[defId];
     const e: Entity = {
       id: this.nextId++, def, x, z, yaw: this.rng.range(0, Math.PI * 2), state: def.behavior === 'hound' ? 'lurk' : 'patrol', stateTime: 0,
       home: { x, z }, pack, path: [], pathTarget: null, repath: 0, target: null, seesPlayer: false, seenByPlayer: false,
-      tellLeft: 0, cooldown: 0, lostTime: 0, speed: 0, tellStarted: false,
+      tellLeft: 0, cooldown: 0, lostTime: 0, speed: 0, tellStarted: false, data: {},
     };
     this.entities.push(e);
     return e;
@@ -90,7 +98,7 @@ export class EntityWorld {
 
   // ---- perception ----
 
-  private sees(e: Entity, c: AiContext): boolean {
+  sees(e: Entity, c: AiContext): boolean {
     const p = c.player;
     if (p.hidden) return false;
     const d = dist(e.x, e.z, p.x, p.z);
@@ -104,7 +112,7 @@ export class EntityWorld {
   }
 
   /** Does the player have the entity in view (cone around where they look, clear line of sight)? */
-  private seenBy(e: Entity, p: PlayerPercept): boolean {
+  seenBy(e: Entity, p: PlayerPercept): boolean {
     const d = dist(e.x, e.z, p.x, p.z);
     if (d > 26) return false;
     const toX = e.x - p.x, toZ = e.z - p.z;
@@ -115,7 +123,7 @@ export class EntityWorld {
 
   // ---- movement ----
 
-  private steer(e: Entity, tx: number, tz: number, speed: number, dt: number): void {
+  steer(e: Entity, tx: number, tz: number, speed: number, dt: number): void {
     const dx = tx - e.x, dz = tz - e.z, d = Math.hypot(dx, dz);
     if (d < 1e-4) { e.speed = 0; return; }
     const step = Math.min(d, speed * dt);
@@ -128,7 +136,7 @@ export class EntityWorld {
   }
 
   /** Walk toward a point using the nav graph (direct when the way is clear and close). Returns true on arrival. */
-  private goTo(e: Entity, t: Vec2, speed: number, dt: number, c: AiContext): boolean {
+  goTo(e: Entity, t: Vec2, speed: number, dt: number, c: AiContext): boolean {
     const d = dist(e.x, e.z, t.x, t.z);
     if (d < 0.5) { e.speed = 0; return true; }
     if (d < 7 && !this.world.segmentBlocked(e.x, e.z, t.x, t.z)) { this.steer(e, t.x, t.z, speed, dt); return false; }
@@ -144,19 +152,19 @@ export class EntityWorld {
     return false;
   }
 
-  private randomPatrolPoint(e: Entity): Vec2 {
+  randomPatrolPoint(e: Entity): Vec2 {
     const rooms = this.plan.rooms;
     const near = rooms.filter((r) => Math.hypot(r.x + r.w / 2 - e.home.x, r.z + r.d / 2 - e.home.z) < 40 && r.kind !== 'start');
     const r = this.rng.pick(near.length ? near : rooms);
     return { x: r.x + r.w / 2 + this.rng.range(-1.5, 1.5), z: r.z + r.d / 2 + this.rng.range(-1.5, 1.5) };
   }
 
-  private setState(e: Entity, s: AiState): void { if (e.state !== s) { e.state = s; e.stateTime = 0; e.path = []; e.pathTarget = null; } }
+  setState(e: Entity, s: AiState): void { if (e.state !== s) { e.state = s; e.stateTime = 0; e.path = []; e.pathTarget = null; } }
 
-  private startHunt(e: Entity): void { if (this.hunters++ === 0) this.emit({ type: 'huntStart', entity: e }); }
-  private endHunt(): void { if (this.hunters > 0 && --this.hunters === 0) this.emit({ type: 'huntEnd' }); }
-  private isHunting(s: AiState): boolean { return s === 'hunt' || s === 'tell' || s === 'chase'; }
-  private change(e: Entity, s: AiState): void {
+  startHunt(e: Entity): void { if (this.hunters++ === 0) this.emit({ type: 'huntStart', entity: e }); }
+  endHunt(): void { if (this.hunters > 0 && --this.hunters === 0) this.emit({ type: 'huntEnd' }); }
+  isHunting(s: AiState): boolean { return s === 'hunt' || s === 'tell' || s === 'chase'; }
+  change(e: Entity, s: AiState): void {
     const was = this.isHunting(e.state), will = this.isHunting(s);
     this.setState(e, s);
     if (!was && will) this.startHunt(e); else if (was && !will) this.endHunt();
@@ -171,17 +179,19 @@ export class EntityWorld {
       e.tellStarted = false;
       e.seesPlayer = this.sees(e, c);
       e.seenByPlayer = this.seenBy(e, c.player);
-      if (e.def.behavior === 'stick') this.stick(e, c, dt); else this.hound(e, c, dt);
+      const b = e.def.behavior;
+      if (b === 'stick') this.stick(e, c, dt); else if (b === 'hound') this.hound(e, c, dt); else BEHAVIORS[b]?.(this, e, c, dt);
     }
+    if (this.removed.length) { this.entities = this.entities.filter((e) => !this.removed.includes(e)); this.removed = []; }
   }
 
-  private hit(e: Entity, c: AiContext): void {
+  hit(e: Entity, c: AiContext): void {
     if (c.mode === 'observe') return;
     e.cooldown = e.def.cooldown;
     this.emit({ type: 'hit', entity: e, damage: e.def.damage });
   }
 
-  private beginTell(e: Entity, c: AiContext): void {
+  beginTell(e: Entity, c: AiContext): void {
     this.change(e, 'tell');
     e.tellLeft = e.def.tell * c.diff.tellTime;
     e.tellStarted = true;

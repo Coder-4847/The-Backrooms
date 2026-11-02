@@ -4,7 +4,7 @@
  * a few hundred triangles on Potato, many thousands on Ultra. Distinct silhouettes in the dark:
  * the Stick is impossibly tall and thin; the Hound is low with two ember eyes.
  */
-import { CatmullRomCurve3, Color, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, SphereGeometry, TubeGeometry, Vector3, type BufferGeometry, type Material } from 'three';
+import { BoxGeometry, CatmullRomCurve3, Color, CylinderGeometry, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, SphereGeometry, TubeGeometry, Vector3, type BufferGeometry, type Material } from 'three';
 
 export interface Body { group: Group; update(speed: number, t: number, dt: number, tell: boolean, seen: boolean): void; dispose(): void }
 
@@ -89,4 +89,82 @@ export function buildHound(level: number): Body {
   };
 }
 
-export function buildBody(defId: string, level: number): Body { return defId === 'hound' ? buildHound(level) : buildStick(level); }
+interface HumanOpts { height: number; suit: number; skin?: number; hat?: boolean; sash?: number; blink?: boolean; lantern?: boolean; wide?: boolean }
+
+/** Restrained mannequin-like human: tubes for limbs, ellipsoids for torso/head; used by coworkers, Skin-stealer, Concierge, Monitor, Companion. */
+export function buildHumanoid(level: number, o: HumanOpts): Body {
+  const geos: BufferGeometry[] = [];
+  const mats: Material[] = [];
+  const suit = new MeshStandardMaterial({ color: o.suit, roughness: 0.85 }), skin = new MeshStandardMaterial({ color: o.skin ?? 0xb8a890, roughness: 0.95 });
+  mats.push(suit, skin);
+  const group = new Group();
+  const sc = o.height / 1.75;
+  const add = (g: BufferGeometry, m: Material, parent: Group = group): Mesh => { geos.push(g); const mesh = new Mesh(g, m); parent.add(mesh); return mesh; };
+  const torso = add(ellipsoid(o.wide ? 0.28 : 0.2, 0.34, 0.13, level), suit); torso.position.y = 1.2 * sc;
+  const head = new Group(); head.position.y = 1.62 * sc; group.add(head);
+  add(ellipsoid(0.11, 0.14, 0.11, level), skin, head);
+  const eyes: Mesh[] = [];
+  const eyeMat = new MeshBasicMaterial({ color: 0x050505 }); mats.push(eyeMat);
+  for (const sx of [-1, 1]) { const e = add(ellipsoid(0.014, 0.014, 0.01, Math.min(level, 2)), eyeMat, head); e.position.set(sx * 0.04, 0.02, -0.1); eyes.push(e); }
+  if (o.hat) { const hat = add(new CylinderGeometry(0.12, 0.13, 0.16, radial(level) + 4), suit, head); hat.position.y = 0.18; const brim = add(new CylinderGeometry(0.19, 0.19, 0.02, radial(level) + 4), suit, head); brim.position.y = 0.1; }
+  if (o.sash) { const sash = new Mesh((geos[geos.push(new BoxGeometry(0.06, 0.6, 0.3)) - 1]), (() => { const m = new MeshStandardMaterial({ color: o.sash!, roughness: 0.8 }); mats.push(m); return m; })()); sash.position.set(0.1, 1.2 * sc, 0); sash.rotation.z = 0.5; group.add(sash); }
+  const arms: Group[] = [], legs: Group[] = [];
+  for (const sx of [-1, 1]) {
+    const a = new Group(); a.position.set(sx * 0.22 * (o.wide ? 1.3 : 1), 1.45 * sc, 0); add(tube([new Vector3(0, 0, 0), new Vector3(sx * 0.03, -0.3 * sc, 0.02), new Vector3(sx * 0.04, -0.62 * sc, 0.05)], 0.04, level), suit, a); group.add(a); arms.push(a);
+    const l = new Group(); l.position.set(sx * 0.09, 0.9 * sc, 0); add(tube([new Vector3(0, 0, 0), new Vector3(0, -0.45 * sc, 0.02), new Vector3(0, -0.88 * sc, 0)], 0.055, level), suit, l); group.add(l); legs.push(l);
+  }
+  if (o.lantern) { const lan = add(ellipsoid(0.05, 0.07, 0.05, Math.min(level, 2)), new MeshBasicMaterial({ color: new Color(0xffb050).multiplyScalar(3) })); lan.position.set(0.3, 0.95 * sc, -0.1); }
+  let blinkT = 2 + Math.random() * 3;
+  return {
+    group,
+    update(speed, t, dt, tell) {
+      const sw = Math.sin(t * 4.6) * Math.min(1, speed / 1.4);
+      legs[0].rotation.x = sw * 0.5; legs[1].rotation.x = -sw * 0.5; arms[0].rotation.x = -sw * 0.35; arms[1].rotation.x = sw * 0.35;
+      if (tell) { arms[0].rotation.z = -0.5; arms[1].rotation.z = 0.5; head.rotation.x = 0.35; } else { arms[0].rotation.z = 0; arms[1].rotation.z = 0; head.rotation.x = Math.sin(t * 0.6) * 0.04; }
+      blinkT -= dt;
+      if (o.blink) { const closed = blinkT < 0.12; for (const e of eyes) e.scale.y = closed ? 0.1 : 1; if (blinkT < 0) blinkT = 2 + Math.random() * 4; }
+      torso.scale.y = 1 + Math.sin(t * 1.6) * 0.01;
+    },
+    dispose() { geos.forEach((g) => g.dispose()); mats.forEach((m) => m.dispose()); },
+  };
+}
+
+export function buildHowler(level: number): Body {
+  const geos: BufferGeometry[] = []; const mats: Material[] = [];
+  const skin = new MeshStandardMaterial({ color: 0x2b2a2e, roughness: 0.75 }), mouthM = new MeshBasicMaterial({ color: 0x050204 });
+  mats.push(skin, mouthM);
+  const group = new Group();
+  const add = (g: BufferGeometry, m: Material, parent: Group = group): Mesh => { geos.push(g); const mesh = new Mesh(g, m); parent.add(mesh); return mesh; };
+  const body = add(ellipsoid(0.38, 0.55, 0.28, level), skin); body.position.y = 1.0;
+  const head = new Group(); head.position.y = 1.78; group.add(head);
+  add(ellipsoid(0.26, 0.3, 0.24, level), skin, head);
+  const mouth = add(ellipsoid(0.12, 0.05, 0.05, level), mouthM, head); mouth.position.set(0, -0.08, -0.2); // a blind head: no eyes, only a mouth
+  const arms: Group[] = [];
+  for (const sx of [-1, 1]) { const a = new Group(); a.position.set(sx * 0.4, 1.4, 0); add(tube([new Vector3(0, 0, 0), new Vector3(sx * 0.12, -0.5, 0.05), new Vector3(sx * 0.1, -1.0, 0.1), new Vector3(sx * 0.08, -1.3, 0.2)], 0.06, level), skin, a); group.add(a); arms.push(a); }
+  const legs: Group[] = [];
+  for (const sx of [-1, 1]) { const l = new Group(); l.position.set(sx * 0.16, 0.55, 0); add(tube([new Vector3(0, 0, 0), new Vector3(0, -0.28, 0.04), new Vector3(0, -0.55, 0)], 0.09, level), skin, l); group.add(l); legs.push(l); }
+  return {
+    group,
+    update(speed, t, _dt, tell) {
+      const sw = Math.sin(t * 3.4) * Math.min(1, speed / 1.5);
+      legs[0].rotation.x = sw * 0.6; legs[1].rotation.x = -sw * 0.6; arms[0].rotation.x = -sw * 0.4; arms[1].rotation.x = sw * 0.4;
+      head.rotation.z = Math.sin(t * 1.9) * 0.18; // listening: head cocked, swaying
+      mouth.scale.set(1 + (tell ? 1.4 : 0), tell ? 8 + Math.sin(t * 40) * 2 : 1, 1);
+      head.rotation.x = tell ? -0.5 : 0;
+    },
+    dispose() { geos.forEach((g) => g.dispose()); mats.forEach((m) => m.dispose()); },
+  };
+}
+
+export function buildBody(defId: string, level: number): Body {
+  switch (defId) {
+    case 'hound': return buildHound(level);
+    case 'howler': return buildHowler(level);
+    case 'coworker': return buildHumanoid(level, { height: 1.75, suit: 0x56606a, blink: true });
+    case 'skinstealer': return buildHumanoid(level, { height: 1.78, suit: 0x56606a, blink: false });
+    case 'concierge': return buildHumanoid(level, { height: 2.1, suit: 0x141214, hat: true, skin: 0xa89c90 });
+    case 'monitor': return buildHumanoid(level, { height: 1.9, suit: 0x2a4a3a, sash: 0xd8c040, blink: true, wide: true });
+    case 'companion': return buildHumanoid(level, { height: 1.65, suit: 0xa8602a, blink: true, lantern: true });
+    default: return buildStick(level);
+  }
+}

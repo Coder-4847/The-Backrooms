@@ -14,7 +14,7 @@ import { DIFFICULTIES, type DifficultyId } from './difficulty';
 import { Rng, deriveSeed, parseSeed, randomSeedString } from '../gen/rng';
 import { bus } from './events';
 import { h } from '../ui/dom';
-import { dialoguePanel, doorPanel, infoPanel, inventoryPanel, journalPanel, notePanel, stashPanel } from '../ui/panels';
+import { craftPanel, dialoguePanel, doorPanel, infoPanel, inventoryPanel, journalPanel, notePanel, stashPanel, talkPanel } from '../ui/panels';
 import { NOTES } from '../story/notes';
 import type { HubRef, HubState } from '../levels/hubObjects';
 import type { SimSnapshot } from '../levels/sim';
@@ -110,6 +110,11 @@ export class Flow {
     });
     await scene.load((p, label) => g.ui.setLoading(true, def.name, p, label));
     scene.sim.deaths = deaths;
+    const comp = this.slot?.npcs.companion as { present?: boolean; hp?: number } | undefined;
+    if (comp) { // Pim already travels with you (or is gone for good): the camp survivor is not duplicated
+      scene.sim.ew.entities = scene.sim.ew.entities.filter((e) => e.def.id !== 'companion');
+      if (comp.present) scene.sim.x.spawnCompanion(comp.hp ?? 100);
+    }
     scene.onExit = () => void this.completeLevel();
     scene.onCheckpoint = (i) => void this.checkpoint(i);
     scene.onDeath = () => void this.onDeath();
@@ -122,14 +127,19 @@ export class Flow {
       if (e.type !== 'tell') return;
       const b = (this.g.profile.bestiary[e.entity.def.id] ??= { discovered: 0, learned: [] });
       b.discovered++;
-      if (b.discovered === 1) { b.learned.push(e.entity.def.id === 'hound' ? 'Growls before it lunges.' : 'Ticks before it touches.'); void this.g.saves.saveProfile(this.g.profile); }
+      const lines: Record<string, string> = { hound: 'Growls before it lunges.', stick: 'Ticks before it touches.', howler: 'Screams when it hears you; the scream carries.', skinstealer: 'Never blinks. Its shadow lags.', concierge: 'Rings a bell once you have broken a rule.', monitor: 'Whistles if you have no pass.' };
+      if (b.discovered === 1) { b.learned.push(lines[e.entity.def.id] ?? 'Something stirs.'); void this.g.saves.saveProfile(this.g.profile); }
     });
+    scene.sim.listeners.push((e) => { if (e.type === 'talk') this.g.ui.openPanel(talkPanel(this.g, e.id, () => this.g.ui.closePanel())); else if (e.type === 'companion' && e.what === 'lost' && this.slot) this.slot.npcs.companion = { present: false, lost: true, hp: 0 }; else if (e.type === 'companion' && e.what === 'recruited' && this.slot) this.slot.npcs.companion = { present: true, hp: 100 }; });
     scene.onNote = (id) => this.foundNote(id);
     scene.onCustom = (ref) => this.custom(ref as HubRef);
   }
 
   private foundNote(id: string): void {
     const s = this.slot;
+    const dynamic = this.g.level?.plan.noteText?.[id];
+    // generated notes (puzzle hints, badge numbers, posted rules) are only valid for this run, so they stay out of the journal
+    if (!NOTES[id] || dynamic) { this.g.ui.openPanel(notePanel(id, () => this.g.ui.closePanel(), dynamic ?? { title: 'Note', text: '...' })); return; }
     if (s && !s.notesFound.includes(id)) s.notesFound.push(id);
     if (!this.g.profile.journal.includes(id)) { this.g.profile.journal.push(id); void this.g.saves.saveProfile(this.g.profile); }
     this.g.ui.openPanel(notePanel(id, () => this.g.ui.closePanel()));
@@ -190,6 +200,7 @@ export class Flow {
       let inv = L.sim.inv;
       if (r.mode === 'replay') inv = this.capGains(r.startInv, L.sim.inv);
       slot.inventory = inv.toState(); slot.stats = L.sim.stats.toSave(L.sim.player.stamina);
+      if (L.sim.x.companion) slot.npcs.companion = { present: true, hp: L.sim.x.companion.data.hp };
       if (r.mode === 'campaign') SaveManager.completeLevel(slot, r.index, r.levelId, time, CAMPAIGN.length);
       else { const prev = slot.completed[r.levelId]; if (!prev || time < prev.bestTime) slot.completed[r.levelId] = { bestTime: time, difficulty: r.difficulty }; slot.checkpoint = null; }
       const p = g.profile;
@@ -234,8 +245,8 @@ export class Flow {
       case 'bestiary': ui.openPanel(infoPanel('Bestiary wall', this.bestiaryText(), close)); break;
       case 'gallery': ui.openPanel(infoPanel('Ending gallery', 'Six endings. None unlocked yet. The door is locked from the other side. (Endings arrive in Phase 5.)', close)); break;
       case 'camcorder': ui.openPanel(infoPanel('Camcorder station', 'Lens covers, tape stock, a different strap. Customization unlocks later.', close)); break;
-      case 'kitchen': ui.openPanel(infoPanel('Kitchen', 'A hotplate, a dented pot, three cans with the labels worn off. Cooking arrives in Phase 2 with the crafting system.', close)); break;
-      case 'crafting': ui.openPanel(infoPanel('Crafting table', 'A workbench with the outlines of tools drawn in marker. Recipes arrive in Phase 2.', close)); break;
+      case 'kitchen': ui.openPanel(craftPanel(g, true, close)); break;
+      case 'crafting': ui.openPanel(craftPanel(g, false, close)); break;
     }
   }
 

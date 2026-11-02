@@ -12,7 +12,7 @@ describe('Central Hub', () => {
     expect(new Set(CAMPAIGN.map((c) => c.id)).size).toBe(25);
     expect([1, 2, 3].map((a) => CAMPAIGN.filter((c) => c.act === a).length)).toEqual([7, 8, 10]);
     expect(CAMPAIGN[0].id).toBe('level0'); expect(CAMPAIGN[24].id).toBe('finale');
-    expect(isImplemented('level0')).toBe(true); expect(isImplemented('level1')).toBe(false);
+    expect(isImplemented('level0')).toBe(true); expect(isImplemented('level1')).toBe(true); expect(isImplemented('level6')).toBe(false);
     for (const l of LEVELS.filter((x) => !x.dev)) expect(CAMPAIGN.some((c) => c.id === l.id)).toBe(true);
   });
   it('is valid at every frontier: rooms do not overlap, connected, doors on walls, nav ok', () => {

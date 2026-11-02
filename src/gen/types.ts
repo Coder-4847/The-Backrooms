@@ -43,6 +43,19 @@ export interface HubData {
   tunnelRoom: number;
 }
 
+/** A multi-part puzzle that opens `lock` when solved (spec 5.5: valves, fuses, rules). Parts must be reachable before the lock. */
+export interface PuzzleDef {
+  id: string; kind: 'valves'; lock: string;
+  parts: { id: string; room: number; pos: Vec2; states: number }[];
+  /** Target state per part (same order as `parts`). */
+  solution: number[];
+  hintNote: string;
+}
+/** Static prop box (racks, desks, pipes...) placed along walls; has a collider. */
+export interface PropDef { kind: string; x: number; z: number; w: number; d: number; h: number; color: number }
+/** Posted rule (Terror Hotel): some are false. */
+export interface RuleDef { id: string; kind: 'noRunning' | 'noLight' | 'noNoise' | 'noKnock'; text: string; real: boolean }
+
 export interface HideSpot { id: string; room: number; pos: Vec2; kind: 'locker' | 'desk'; /** which way the opening faces (radians) */ yaw: number }
 export interface NavNode { id: number; pos: Vec2; room: number; /** room centre, doorway mouth (0.9 m in front of a door) or the door itself */ kind?: 'room' | 'mouth' | 'door'; connection?: number }
 export interface NavEdge { a: number; b: number; cost: number; connection?: number }
@@ -62,6 +75,15 @@ export interface LevelPlan {
   waypoints: Waypoint[];
   items: ItemSpawn[];
   hides?: HideSpot[];
+  puzzles?: PuzzleDef[];
+  props?: PropDef[];
+  /** Notes whose text is generated per seed (puzzle hints, verification answers). */
+  noteText?: Record<string, { title: string; text: string }>;
+  /** Sound travels with less damping in pipe tunnels etc. */
+  acoustics?: { damping: number };
+  rules?: RuleDef[];
+  /** Offices: the badge question real coworkers answer correctly. */
+  verify?: { question: string; answer: string; wrong: string };
   /** Central Hub data (doors, stations, NPC spots); only present on the hub plan. */
   hub?: HubData;
   entitySlots: EntitySlot[];

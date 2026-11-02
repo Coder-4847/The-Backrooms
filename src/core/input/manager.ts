@@ -174,9 +174,12 @@ export class InputManager {
     const touchHeld = new Set<Action>(this.touch.held);
     for (const a of this.injectHeld) touchHeld.add(a);
     const held = this.latched.size ? new Set([...this.keys, ...this.latched]) : this.keys;
+    const fresh = this.latched.size ? new Set(this.latched) : null;
     this.latched.clear();
     resolveActions(b, held, padDown, touchHeld, this.cur);
     diffActions(this.prev, this.cur, f.pressed, f.released);
+    // every keydown since the last tick is a new press, even if the previous tap was already latched (rapid double taps)
+    if (fresh) { const a = emptyActionMap(); resolveActions(b, fresh, [], new Set(), a); for (const k of ACTIONS) if (a[k]) f.pressed[k] = true; }
     for (const a of ACTIONS) { f.down[a] = this.cur[a]; this.prev[a] = this.cur[a]; }
     if (this.wheelPulse) { f.pressed.NextItem = true; this.wheelPulse = false; }
     f.device = this.tracker.device;

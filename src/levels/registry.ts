@@ -6,8 +6,9 @@ import type { LevelDef } from '../gen/types';
 import { placeholder } from './placeholder';
 import { testroom } from './testroom';
 import { level0 } from './level0';
+import { act1Levels } from './act1';
 
-export const LEVELS: LevelDef[] = [level0, testroom, placeholder];
+export const LEVELS: LevelDef[] = [level0, ...act1Levels, testroom, placeholder];
 
 export const levelById = (id: string): LevelDef | undefined => LEVELS.find((l) => l.id === id);
 

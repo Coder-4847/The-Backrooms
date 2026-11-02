@@ -3,8 +3,9 @@
 A single-player, procedurally generated, found-footage Backrooms survival horror game that runs in the browser
 (TypeScript + Three.js, WebGL2). Everything (levels, textures, audio, entities) is generated in code from a seed.
 
-**Status: Phase 0 (foundation).** The engine, tooling, settings, saves, input, audio, render pipeline, debug tools and a
-test room exist. Gameplay content arrives in later phases (see `docs/MASTER.md`).
+**Status: Phase 2 (Act 1).** Engine, tooling, saves, input, audio and render pipeline (Phase 0); core survival systems, Level 0 and the
+procedural Central Hub (Phase 1); Levels 1-5 and the Schoolhouse with new entities, puzzles, crafting and a companion (Phase 2).
+Later phases are in `docs/MASTER.md`.
 
 ## Play
 The game is deployed to GitHub Pages from `main` by `.github/workflows/deploy.yml`:
@@ -25,7 +26,11 @@ npm run build && npm run preview
 | Move / look | WASD / mouse | Left / right stick | Left half joystick / drag right half |
 | Sprint / crouch | Shift / Ctrl or C | L3 / R3 | » / ▽ buttons |
 | Interact | E | A (✕ on PlayStation) | E button (appears when relevant) |
-| Flashlight | G | Y | ☼ |
+| Flashlight / camcorder night vision | G / V | Y / D-pad up | ☼ |
+| Throw (distraction) | T | RB | ↗ |
+| Hotbar / next item | 1-4 / wheel | LT | tap the slot |
+| Lean / hold breath | Q R / B | D-pad / LB | |
+| Backpack / journal | I or Tab / J | View / D-pad left | ▤ |
 | Pause | Esc | Menu | ❙❙ |
 | Debug console | ` (backtick) | | |
 

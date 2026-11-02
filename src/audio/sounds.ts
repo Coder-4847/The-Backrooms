@@ -189,4 +189,62 @@ export class Sounds {
     const g = c.createGain(); g.gain.setValueAtTime(0.08, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.07);
     o.connect(lp).connect(g).connect(out); o.start(t); o.stop(t + 0.08);
   }
+
+  /** Howler scream: harsh FM sweep that carries (the tell that also alerts others). */
+  scream(out: AudioNode, dur = 1.5): void {
+    const c = this.ctx, t = c.currentTime;
+    const car = c.createOscillator(); car.type = 'sawtooth'; car.frequency.setValueAtTime(420, t); car.frequency.linearRampToValueAtTime(900, t + dur * 0.5); car.frequency.linearRampToValueAtTime(300, t + dur);
+    const mod = c.createOscillator(); const mg = c.createGain(); mod.frequency.value = 71; mg.gain.value = 260; mod.connect(mg).connect(car.frequency);
+    const f = c.createBiquadFilter(); f.type = 'bandpass'; f.frequency.setValueAtTime(900, t); f.frequency.linearRampToValueAtTime(1800, t + dur * 0.5); f.Q.value = 3;
+    const g = c.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.5, t + 0.1); g.gain.linearRampToValueAtTime(0.35, t + dur * 0.7); g.gain.linearRampToValueAtTime(0, t + dur);
+    car.connect(f).connect(g).connect(out); car.start(t); mod.start(t); car.stop(t + dur + 0.05); mod.stop(t + dur + 0.05);
+    this.a.caption('[a scream]', dur * 1000);
+  }
+
+  /** Desk bell (the Concierge's tell): inharmonic partials with a long decay. */
+  bell(out: AudioNode): void {
+    const c = this.ctx, t = c.currentTime;
+    for (const [f, a, d] of [[880, 0.3, 2.2], [1397, 0.18, 1.6], [2360, 0.1, 1.0], [3720, 0.05, 0.6]] as const) {
+      const o = c.createOscillator(); o.type = 'sine'; o.frequency.value = f;
+      const g = c.createGain(); g.gain.setValueAtTime(a, t); g.gain.exponentialRampToValueAtTime(0.0005, t + d);
+      o.connect(g).connect(out); o.start(t); o.stop(t + d + 0.05);
+    }
+    this.a.caption('[a desk bell rings]', 1800);
+  }
+
+  /** School whistle: two short rising tones with a breathy edge. */
+  whistle(out: AudioNode): void {
+    const c = this.ctx, t = c.currentTime;
+    for (let i = 0; i < 2; i++) {
+      const o = c.createOscillator(); o.type = 'sine'; o.frequency.setValueAtTime(2300, t + i * 0.4); o.frequency.linearRampToValueAtTime(2900, t + i * 0.4 + 0.3);
+      const vib = c.createOscillator(); const vg = c.createGain(); vib.frequency.value = 38; vg.gain.value = 60; vib.connect(vg).connect(o.frequency);
+      const g = c.createGain(); g.gain.setValueAtTime(0, t + i * 0.4); g.gain.linearRampToValueAtTime(0.22, t + i * 0.4 + 0.03); g.gain.linearRampToValueAtTime(0, t + i * 0.4 + 0.32);
+      o.connect(g).connect(out); o.start(t + i * 0.4); vib.start(t + i * 0.4); o.stop(t + i * 0.4 + 0.35); vib.stop(t + i * 0.4 + 0.35);
+    }
+    this.a.caption('[a whistle blows]', 1000);
+  }
+
+  /** Tripline alarm: rattling cans. */
+  clatter(out: AudioNode): void {
+    const c = this.ctx, t = c.currentTime;
+    for (let i = 0; i < 14; i++) {
+      const tt = t + i * 0.045 + Math.random() * 0.03;
+      const o = c.createOscillator(); o.type = 'square'; o.frequency.value = 900 + Math.random() * 2200;
+      const g = c.createGain(); g.gain.setValueAtTime(0.12, tt); g.gain.exponentialRampToValueAtTime(0.0005, tt + 0.07);
+      o.connect(g).connect(out); o.start(tt); o.stop(tt + 0.08);
+    }
+    this.a.caption('[cans clatter]', 1200);
+  }
+
+  /** Radio static: band-passed noise bursts. Returns nothing; call for the lure's start. */
+  staticBurst(out: AudioNode, dur = 1.2): void {
+    const c = this.ctx, t = c.currentTime;
+    const n = this.a.noiseSource(); const f = c.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 2200; f.Q.value = 0.8;
+    const g = c.createGain(); g.gain.setValueAtTime(0, t); for (let i = 0; i < 8; i++) g.gain.linearRampToValueAtTime(Math.random() * 0.25, t + (i / 8) * dur); g.gain.linearRampToValueAtTime(0, t + dur);
+    n.connect(f).connect(g).connect(out); n.start(t, Math.random(), dur);
+    this.a.caption('[radio static]', dur * 1000);
+  }
+
+  /** Valve turning: squeaky metal. */
+  valve(out: AudioNode): void { this.creak(out, 0.7); }
 }

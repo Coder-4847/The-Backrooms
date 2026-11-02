@@ -27,8 +27,9 @@ try {
       if (level.includes('+ents')) {
         g.level.sim.ew.entities.length = 0; g.level.sim.director.phase = 'quiet';
         const f = { x: -Math.sin(0.35), z: -Math.cos(0.35) };
-        const st = g.level.sim.ew.spawn('stick', p.x + f.x * 6, p.z + f.z * 6); st.state = 'flee';
-        const hd = g.level.sim.ew.spawn('hound', p.x + f.x * 4 + 1.5, p.z + f.z * 4); hd.state = 'lurk';
+        const types: string[] = [...new Set<string>(plan.entitySlots.map((s: any) => s.entity).filter((e: string) => e !== 'companion'))];
+        if (!types.length) types.push('stick', 'hound');
+        types.slice(0, 3).forEach((t, i) => { const e = g.level.sim.ew.spawn(t, p.x + f.x * (5 + i * 2.2) + (i - 1) * 1.6, p.z + f.z * (5 + i * 2.2)); e.state = t === 'hound' ? 'lurk' : 'flee'; e.yaw = p.yaw + Math.PI; });
       }
     }, { level, tier, seed });
     // let post-processing/shadows settle for a handful of frames

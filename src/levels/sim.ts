@@ -19,10 +19,19 @@ import { Flashlight, Camcorder } from '../systems/light';
 import { NoiseField, NOISE } from '../systems/noise';
 import { Director, type DirectorEvent } from '../systems/director';
 import { EntityWorld, type AiContext, type Entity, type PlayerPercept } from '../entities/ai';
+import { SimExtras } from './simExtras';
 import type { Connection, HideSpot, ItemSpawn, LevelPlan, Waypoint } from '../gen/types';
 
 export type SimEvent =
   | { type: 'custom'; ref: unknown }
+  | { type: 'valve'; puzzle: string; solved: boolean }
+  | { type: 'puzzle'; id: string }
+  | { type: 'throw'; x: number; z: number; item: string }
+  | { type: 'alarm'; x: number; z: number }
+  | { type: 'radio'; x: number; z: number }
+  | { type: 'violation'; rule: string }
+  | { type: 'companion'; what: 'recruited' | 'hurt' | 'lost' }
+  | { type: 'talk'; id: number }
   | { type: 'pickup'; item: ItemSpawn }
   | { type: 'full'; item: ItemSpawn }
   | { type: 'note'; id: string }
@@ -51,6 +60,8 @@ export interface SimSnapshot { collected: string[]; keys: string[]; openDoors: n
 
 export const REACH = 1.9;
 
+const lockHint = (lock: string): string => lock.startsWith('fuse') ? 'Dead transformer bay: needs a fuse' : lock.startsWith('pry') ? 'Stuck door: needs a crowbar' : lock.startsWith('valves') ? 'Sealed: the valves must be aligned' : 'Locked';
+
 export class LevelSim {
   readonly world = new StaticWorld();
   readonly player = new Player();
@@ -67,6 +78,7 @@ export class LevelSim {
 
   inv: Inventory; stats: Stats; flash = new Flashlight(); cam = new Camcorder();
   noise: NoiseField; director: Director; ew: EntityWorld;
+  x: SimExtras;
   diff: DifficultyDef;
   hidden: HideSpot | null = null;
   flares: { x: number; z: number; t: number }[] = [];
@@ -103,15 +115,17 @@ export class LevelSim {
     this.stats = opts.stats ?? new Stats();
     this.hungerEnabled = opts.hungerEnabled ?? true;
     this.intensity = effectiveIntensity(opts.intensity ?? 0.5, opts.scare ?? 'standard');
-    this.noise = new NoiseField(plan);
+    this.noise = new NoiseField(plan, plan.acoustics?.damping);
     this.director = new Director(this.diff, this.intensity, this.rng.fork('director'));
     // supply scarcity (difficulty): some loot is simply not there. Layout is untouched; deterministic per seed.
     const keep = Math.min(1, this.diff.supply);
     for (const it of plan.items) if (it.kind === 'loot' && new Rng(deriveSeed(seed, it.id)).next() >= keep) this.collected.add(it.id);
     this.ew = new EntityWorld(plan, this.world, seed);
     if (opts.spawnEntities !== false) this.ew.spawnFromPlan();
+    this.x = new SimExtras(this);
+    for (const pr of plan.props ?? []) this.world.add(`prop:${pr.x},${pr.z}`, [{ x0: pr.x - pr.w / 2, x1: pr.x + pr.w / 2, z0: pr.z - pr.d / 2, z1: pr.z + pr.d / 2 }]);
     this.percept = { x: 0, z: 0, yaw: 0, hidden: false, crouching: false, noise: 0, light: 0.6, flashOn: false, flashPower: 0, flares: [] };
-    this.ctx = { player: this.percept, noise: this.noise, openLocks: this.keys, diff: this.diff, director: this.director, mode: opts.mode ?? 'active' };
+    this.ctx = { player: this.percept, noise: this.noise, openLocks: this.keys, diff: this.diff, director: this.director, mode: opts.mode ?? 'active', pass: 'none' };
     this.ew.listeners.push((e) => {
       if (e.type === 'hit') { if (!this.player.god) this.stats.damage(e.damage, this.diff); this.emit({ type: 'hit', entity: e.entity, damage: e.damage }); }
       else if (e.type === 'tell') this.emit({ type: 'tell', entity: e.entity });
@@ -179,6 +193,8 @@ export class LevelSim {
     pc.x = p.x; pc.z = p.z; pc.yaw = p.yaw; pc.hidden = !!this.hidden; pc.crouching = p.crouching; pc.noise = loud;
     pc.light = this.lightLevel; pc.flashOn = this.flash.on && this.inv.has('flashlight'); pc.flashPower = this.flash.output(this.time);
     pc.flares = this.flares;
+    this.ctx.pass = this.x.passHeld;
+    this.x.update(dt, f);
     this.ew.update(dt, this.ctx);
 
     // stats, director, hallucinations
@@ -203,11 +219,12 @@ export class LevelSim {
       if (this.collected.has(it.id)) continue;
       out.push({ kind: 'item', x: it.pos.x, z: it.pos.z, label: it.kind === 'note' ? 'Read note' : `Take ${itemDef(it.item).name}`, ref: it });
     }
-    for (const d of this.doors.values()) if (!d.open) out.push({ kind: 'door', x: d.conn.door.x, z: d.conn.door.z, label: this.keys.has(d.conn.lock!) ? 'Unlock door' : 'Locked', ref: d });
+    for (const d of this.doors.values()) if (!d.open) out.push({ kind: 'door', x: d.conn.door.x, z: d.conn.door.z, label: this.keys.has(d.conn.lock!) ? 'Unlock door' : lockHint(d.conn.lock!), ref: d });
     this.waypoints.forEach((w, i) => out.push({ kind: 'waypoint', x: w.pos.x, z: w.pos.z, label: this.activatedWaypoints.has(i) ? 'Checkpoint (set)' : 'Activate checkpoint', ref: i }));
     for (const h of this.plan.hides ?? []) out.push({ kind: 'hide', x: h.pos.x, z: h.pos.z, label: h.kind === 'locker' ? 'Hide in locker' : 'Hide under desk', ref: h });
     if (!this.plan.hub) out.push({ kind: 'exit', x: this.plan.exit.pos.x, z: this.plan.exit.pos.z, label: 'Leave', ref: null });
     if (this.extra) out.push(...this.extra());
+    out.push(...this.x.interactables());
     const near = out.filter((o) => Math.hypot(o.x - p.x, o.z - p.z) <= REACH);
     near.sort((a, b) => Math.hypot(a.x - p.x, a.z - p.z) - Math.hypot(b.x - p.x, b.z - p.z));
     return near;
@@ -238,7 +255,7 @@ export class LevelSim {
         p.place(h.pos.x - Math.sin(h.yaw) * 0.95, h.pos.z - Math.cos(h.yaw) * 0.95, p.yaw);
         this.emit({ type: 'hide', on: false });
       } else { this.hidden = t.ref as HideSpot; this.emit({ type: 'hide', on: true }); }
-    } else if (t.kind === 'custom') { this.emit({ type: 'custom', ref: t.ref }); }
+    } else if (t.kind === 'custom') { const r = t.ref as { type: string; id?: number }; if (!this.x.handle(r as never)) this.emit({ type: r.type === 'talk' ? 'talk' : 'custom', ref: t.ref, id: r.id } as never); }
     else { this.finished = true; this.emit({ type: 'exit' }); }
     return t;
   }
@@ -247,6 +264,8 @@ export class LevelSim {
   useHeld(): boolean {
     const id = this.inv.held;
     if (!id) return false;
+    const special = this.x.useSpecial(id);
+    if (special !== null) return special;
     const d = itemDef(id), u = d.use;
     if (!u) return false;
     const p = this.player;
@@ -286,6 +305,7 @@ export class LevelSim {
       else if (e.type === 'huntStart') this.director.huntStarted();
       else if (e.type === 'huntEnd') this.director.huntEnded();
     });
+    this.x.companion = null;
     this.director = new Director(this.diff, this.intensity, this.rng.fork(`director${this.deaths}`));
     this.ctx.director = this.director; this.ctx.noise = this.noise;
   }

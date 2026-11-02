@@ -9,7 +9,7 @@ import { STEP } from '../core/loop';
 import type { LevelPlan, Vec2 } from '../gen/types';
 import type { DifficultyId } from '../core/difficulty';
 
-interface Step { to: Vec2; /** interact when arrived (door/key/exit) */ act?: boolean }
+interface Step { to: Vec2; /** interact when arrived (door/key/exit) */ act?: boolean; /** set a puzzle valve to its solution when arrived */ valve?: { puzzle: string; part: string; target: number } }
 
 
 /** Dijkstra over the nav graph avoiding still-locked doors. Returns node ids. */
@@ -70,6 +70,16 @@ export function runBot(plan: LevelPlan, opts: { difficulty?: DifficultyId; maxSe
       }
       return [...toExit.slice(0, -1), { to: plan.exit.pos, act: true }];
     }
+    // exit blocked: unsolved valve puzzles (the bot reads the solution from the plan: it only proves solvability)
+    for (const pz of plan.puzzles ?? []) {
+      if (sim.keys.has(pz.lock)) continue;
+      for (let i = 0; i < pz.parts.length; i++) {
+        const pt = pz.parts[i];
+        if (sim.x.valves.get(pt.id) === pz.solution[i]) continue;
+        const r = route(plan, here, pt.pos, open, isOpen);
+        if (r) return [...r.slice(0, -1), { to: pt.pos, valve: { puzzle: pz.id, part: pt.id, target: pz.solution[i] } }];
+      }
+    }
     // exit blocked: fetch the nearest reachable uncollected key
     let best: { it: (typeof plan.items)[number]; r: Step[]; len: number } | null = null;
     for (const it of plan.items) {
@@ -92,8 +102,13 @@ export function runBot(plan: LevelPlan, opts: { difficulty?: DifficultyId; maxSe
     const tgt = queue[0];
     const dx = tgt.to.x - p.x, dz = tgt.to.z - p.z;
     const d = Math.hypot(dx, dz);
-    const arrive = tgt.act ? 0.9 : 0.35;
+    const arrive = tgt.act || tgt.valve ? 0.9 : 0.35;
     if (d < arrive) {
+      if (tgt.valve) {
+        const v = tgt.valve;
+        for (let k = 0; k < 4 && sim.x.valves.get(v.part) !== v.target; k++) sim.x.handle({ type: 'valve', puzzle: v.puzzle, part: v.part });
+        queue.shift(); continue;
+      }
       if (tgt.act) {
         frame.pressed.Interact = true;
         sim.step(frame); frame.pressed.Interact = false;
