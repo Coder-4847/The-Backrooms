@@ -8,6 +8,7 @@ import {
   LineSegments, Matrix4, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, PMREMGenerator, Scene, SpotLight, Vector3, type Material,
 } from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { LevelSim, type SimEvent, type SimOptions, type SimSnapshot } from './sim';
 import { EntityVisuals } from './entityVisuals';
 import { SceneFx } from './fx';
@@ -204,16 +205,24 @@ export class LevelScene {
       this.extras.push(geo, mat, tx);
     }
     // water: a translucent surface per flooded room (wade / swim / flooded heights); sludge is murky brown
-    const waterGeos: PlaneGeometry[] = [];
-    for (const w of plan.water ?? []) {
-      const r = plan.rooms[w.room];
-      const g = new PlaneGeometry(r.w - 0.3, r.d - 0.3); waterGeos.push(g);
-      const m = new MeshStandardMaterial({ color: w.sludge ? 0x3a3a1e : 0x2a6a80, roughness: 0.08, metalness: 0.1, transparent: true, opacity: w.sludge ? 0.85 : 0.6 });
-      this.extras.push(m);
-      const mesh = new Mesh(g, m); mesh.rotation.x = -Math.PI / 2; mesh.position.set(r.x + r.w / 2, w.depth === 'wade' ? 0.3 : w.depth === 'swim' ? 1.0 : Math.min(2.8, r.height - 0.2), r.z + r.d / 2);
+    // all water rooms of one kind share ONE merged mesh (draw-call budget): clear water and sludge
+    for (const sludge of [false, true]) {
+      const parts: PlaneGeometry[] = [];
+      for (const w of (plan.water ?? []).filter((q) => !!q.sludge === sludge)) {
+        const r = plan.rooms[w.room];
+        const g = new PlaneGeometry(r.w - 0.3, r.d - 0.3);
+        g.rotateX(-Math.PI / 2);
+        g.translate(r.x + r.w / 2, w.depth === 'wade' ? 0.3 : w.depth === 'swim' ? 1.0 : Math.min(2.8, r.height - 0.2), r.z + r.d / 2);
+        parts.push(g);
+      }
+      if (!parts.length) continue;
+      const merged = mergeGeometries(parts)!;
+      parts.forEach((g) => g.dispose());
+      const m = new MeshStandardMaterial({ color: sludge ? 0x3a3a1e : 0x2a6a80, roughness: 0.08, metalness: 0.1, transparent: true, opacity: sludge ? 0.85 : 0.6 });
+      const mesh = new Mesh(merged, m);
       scene.add(mesh); this.waterMeshes.push(mesh);
+      this.extras.push(m, merged);
     }
-    this.extras.push({ dispose: () => waterGeos.forEach((g) => g.dispose()) });
     // sound beacon at the exit (navigate by ear in the dark)
     if (plan.beacons?.length) { const a = this.svc.audio(), sn = this.svc.sounds(); if (a && sn) this.humHandles.push(sn.beacon(a.spatial(plan.beacons[0].x, 1.4, plan.beacons[0].z, 'ambience', 0.15, 0.6))); }
     // puzzle valves: a wheel on a stem that turns with its state

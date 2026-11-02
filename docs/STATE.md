@@ -1,21 +1,33 @@
 # STATE (living). Spec: `docs/MASTER.md`. Layout/data flow: `docs/ARCHITECTURE.md`.
 
 ## Where we are
-**Phase 4 (Act 3: Levels 16-25, Hub 3, the chase and the finale): complete locally. All 25 campaign levels are playable.** Phases 0-3 are in git history. Next: wait for "Begin Phase 5" (endings content, lore pass, New Game+, speedrun, secrets, polish, compatibility, final perf).
+**Phase 5 (endings, lore, secrets, polish): complete. The roadmap is finished.** Remaining work is the open items in `docs/CHECKLIST.md` (real-device and cross-browser testing, real-GPU perf numbers, the unbuilt graphics features) and human playtesting for pacing/balance.
 
 ## Commands
 | Command | Purpose |
 |---|---|
 | `npm run dev` | dev server (add `?debug=1` to any build to enable the backtick debug console + `window.__game`) |
-| `npm test` | Vitest (248 tests, incl. Phase 4: Act 3 levels, open levels, cold, schedule, 8 new entity labs, chase fairness, finale; Phase 3: Act 2 levels, water/breath, darkness, light sections, sequence puzzle, 7 new entity labs; Phase 2: Act 1 levels, puzzles, new entities, crafting, tools, companion, rules): rng, difficulty, saves, settings/input, quality, endings skeleton, generation + validators, mesher/streamer, textures, reverb, collision, bot, sim, **inventory, stats/sanity/hallucinations, lights, noise, Director, Entity Lab AI scenarios, Level 0 in the real sim, hub** |
+| `npm test` | Vitest (257 tests, incl. Phase 5: Anchors, secret, achievements, unlocks, NG+; Phase 4: Act 3 levels, open levels, cold, schedule, 8 new entity labs, chase fairness, finale; Phase 3: Act 2 levels, water/breath, darkness, light sections, sequence puzzle, 7 new entity labs; Phase 2: Act 1 levels, puzzles, new entities, crafting, tools, companion, rules): rng, difficulty, saves, settings/input, quality, endings skeleton, generation + validators, mesher/streamer, textures, reverb, collision, bot, sim, **inventory, stats/sanity/hallucinations, lights, noise, Director, Entity Lab AI scenarios, Level 0 in the real sim, hub** |
 | `npm run validate:levels [-- --seeds=200 --level=id]` | all validators over N seeds + the autopilot bot on 40 seeds; pass/fail table |
 | `npm run bot -- --level=placeholder --seed=123 [--waypoints --difficulty=hard]` | headless autopilot run |
 | `npm run smoke` | Playwright e2e of the real flow: settings persistence, New Game -> hub, dialogue gives an item, inventory panel, door panel -> Level 0, hiding, hound tell-before-bite, death -> rewind -> respawn, note reader, level completion -> hub with next door unlocked |
 | `npm run shots [-- --levels=testroom --tiers=ultra,potato]` | screenshots to `./shots` |
 | `npm run perf [-- --levels=placeholder --tiers=... --seconds=8 --throttle=4]` | flythrough per tier; table + budget check; writes `reports/perf.json` |
+| `npm run mobile` | emulated phone (touch, portrait + landscape): layout fits, no horizontal scroll, touch controls appear, no page errors |
+| `npm run balance [-- --seeds=3]` | balance report: every level x easy/normal/nightmare with a dumb bot, active entities, no god mode |
 | `npm run verify` | typecheck + lint + tests + level validators (what CI runs, plus build) |
 
-## Built in Phase 4
+## Built in Phase 5
+- **Endings content:** all six endings have text and an ending sting; the Architect's decisions + run state go through `resolveEnding`; seen endings are recorded in the profile and shown in the **Ending Gallery** (title menu and the hub gallery door). Loop restarts at Level 0 with a new seed.
+- **True ending:** **five Anchors** (lens cap, tape reel, key ring, photograph, chair leg) hide in off-path dead ends of Level 0, Level 2, Level 37, Level 94 and the Wheat Field, each with an in-level hint note near the start; picking one up in the campaign sets slot flags (replays never change story flags); five + the Architect's "lay the anchors" choice = True ending.
+- **Secret ending:** in Level 0, crouch with the flashlight off and hold your breath, still, in the first room for 20 s ("the hum skips a beat"). The only hint is an in-world pencil graffiti note; no menu mentions it.
+- **New Game+:** unlocked by the first non-Loop ending; entities 12% faster/sharper, sanity drain +15%; lenses and titles carry over.
+- **Speedrun mode:** fixed seed `SPEEDRUN-1`, run timer in the HUD, best time per ending stored in the profile.
+- **Cosmetics + titles:** camcorder lenses (standard, amber, mono, gold) equipped at the hub camcorder station and applied through the VHS colour grade; titles Survivor / Unbroken / Completionist / Anchor.
+- **Bestiary** (seen count + what you learned per entity), **Achievements** (21, evaluated on level clears, notes, endings, crafting), **How to Play**, **Credits**; one-time contextual hints (movement per device, tells, water, hiding, battery).
+- **Polish/QA:** mobile emulation test found and fixed a real bug (the touch layer covered the menus); dev-only menu entries hidden in production; Leech detaches when you leave the water; wading slows less; water surfaces merged into two draw calls (Level 7 Potato went from 358 to 42 draw calls and now meets the budget); balance and mobile tools.
+
+## Built in Phase 4 (summary)
 - **Ten Act 3 levels** (`levels/act3.ts`), validated on 100 seeds each (200 for Acts 1-2) and bot-completable: **Metro** (train every 45 s for 14 s; Wraiths only exist then), **Carnival** (Partygoers are friendly until you break a posted party rule; booth games = reboot-order puzzle), **Suburbs** (7 Watchers: frozen while watched), **Wheat Field** (open outdoor rooms, ~900 soft wheat props you walk through, compass, entity-free), **Arctic Station** (cold system, heated shelters, blizzard gusts, Whiteout Stalkers that will not follow you indoors and flee flares), **Endless City** (open rooftops + buildings, Window-Men step closer each time you look back), **Level 94** (Motion Echo replays your path 5 s late), **The Gallery** (portraits; staring at a wrong one for ~2.5 s summons the Curator, which freezes while watched), **Run for Your Life** (a Pursuer slower than a sprint, grace period, holds off at checkpoints), **The Finale** (the Architect + echoes of earlier entities).
 - **New systems:** open rooms (`Room.open`: floor only; perimeter colliders), soft props, warmth/cold (`plan.cold`, frostbite, WARM bar, flares warm you), train schedule events (`plan.schedule`), player trail for echoes, gaze logic (`plan.portraits`), party rules (`ruleEntity`), compass HUD, fog gusts.
 - **Entities** (`entities/behaviors3.ts`): Platform Wraith, Partygoer, Watcher (Stick logic), Whiteout Stalker, Window-Man, Motion Echo, Curator, Pursuer, Architect; bodies and synthesized train, wind, ending sting.
@@ -64,18 +76,25 @@
 - Debug: `give`, `spawn`, `kill`, `sanity`, `hunger`, `intensity`, `die`, `win`, `hub`, `unlock`, `director` now work.
 
 ## Perf (this environment has NO GPU: Chromium uses SwiftShader software rendering)
-Frame-time numbers are **not representative** and are not judged. Draw calls / triangles / generation times are real. Level 0 flythrough, 1280x720, entities active:
-| tier | draws avg/max | tris (max) | load (gen + textures) | scale |
-|---|---|---|---|---|
-| potato | 40/42 | ~2k | 0.14 s | 0.50 |
-| low | 65/70 | ~3k | 0.30 s | 0.70 |
-| medium | 120/135 | ~4k | 0.45 s | 0.85 |
-| high | 215/264 | ~7k | 1.6 s | 1.00 |
-| ultra | 297/356 | ~12k | 1.4 s | 1.00 |
-All far below the budgets (Ultra < 1500 draws; Potato < 150 draws and < 150k tris). Run `npm run perf` on real hardware for frame times, 1% lows and heap.
+Frame-time numbers are **not representative** and are not judged. Draw calls, triangles, generation and load times are real. Final run, 1280x720 flythrough:
+| level / tier | draws avg/max | tris (max) | load (gen + textures) |
+|---|---|---|---|
+| Level 0 potato | 40/42 | ~2k | 0.13 s |
+| Level 0 low | 64/70 | ~3k | 0.19 s |
+| Level 0 medium | 114/136 | ~4k | 1.0 s |
+| Level 0 high | 269/310 | ~10k | 1.4 s |
+| Level 0 ultra | 269/340 | ~10k | 2.6 s |
+| Level 7 potato (water) | 41/42 | ~2k | 0.14 s |
+| Level 7 low | 62/65 | ~2k | 0.19 s |
+| Level 7 medium / high / ultra (earlier run) | 158/168 · 231/352 · 288/380 | 5-8k | 0.4 / 2.1 / 3.3 s |
+Budgets (Ultra < 1500 draws; Potato < 150 draws and < 150k tris) hold with a wide margin. Real-GPU frame times, 1% lows, heap and mobile numbers still need measuring on hardware (`npm run perf`).
+
+## Balance (dumb bot, 3 seeds, active entities, no god mode)
+The bot never hides, never uses items, and has no hall pass, so failures show where *pressure* exists, not unfairness: Level 3, 4, 8, 37, Garage, Hospital, Server Farm, Suburbs, Wheat Field, City, Level 94, Gallery and the chase clear on every difficulty; Level 0/1/2/5, Schoolhouse (no pass), Level 6 (Lurkers), Carnival and Sewers (hound pack) kill a naive runner on Normal/Nightmare, as intended. Re-run `npm run balance` after tuning. Human playtesting is still needed for real pacing (the bot clears a level in ~1.5-3 min of simulated time).
 
 ## Known gaps / honest notes
 - **Deploy:** the `github-pages` environment only deploys from `main`; every phase is pushed to the assigned branch and then to `main`.
+- **Phase 5 gaps:** no screen-reader pass; no per-level music/ambience beds beyond the shared synth; the tutorial is toasts, not a guided level; achievements are toasts (no Steam-style popups); speedrun has no ghost/leaderboard; Firefox/Safari/real phones untested (see `docs/CHECKLIST.md`).
 - Phase 4 gaps: Metro has no train-hopping (the schedule only drives the Wraiths and noise); Carnival booth games are the reboot puzzle, not separate minigames; Suburbs windows/statues are rooms with Watchers, not window figures; the City has no real rooftop gaps/vertigo; Wheat Field streaming is the normal chunk streaming over open rooms (no special LOD); the chase is a long corridor chain with 2-3 checkpoints, not a scripted collapse with branching choices; anchors (5 optional objects) and the secret trigger are not placed in levels yet; Loop/NG+ unlocks and the ending gallery are Phase 5.
 - Phase 3 gaps: no real waves in Level 7 (surge on splashing only); Level 6 beacon is a single tone at the exit; Level 8 crossing is a gated door, not a physical rope swing; Leviathan is a submerged mesh that surfaces when it moves (no scripted glimpses); water has no caustics/SSR yet; Faceling mimics a generic coworker (it does not yet wear Pim's face when Pim is recruited); the Drowned/Leech/Static have simple behaviors.
 - Level-specific hooks not built yet: Level 2 steam hazard (it is fog + sound only), Level 3 arc-flash scare (it reuses the Director flicker burst), Level 4 "elevators that lie", Level 5 room-number plates and a "knock" rule that does anything (it is a deliberately false rule), Level 1 forklifts. These are dressing/polish for the Phase 5 pass.

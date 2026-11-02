@@ -3,7 +3,7 @@
 A single-player, procedurally generated, found-footage Backrooms survival horror game that runs in the browser
 (TypeScript + Three.js, WebGL2). Everything (levels, textures, audio, entities) is generated in code from a seed.
 
-**Status: Phase 4 (Act 3).** All 25 levels are playable and the game has endings. Engine, tooling, saves, input, audio and render pipeline (Phase 0); core survival systems, Level 0 and the
+**Status: complete (Phases 0-5).** 25 levels, six endings, New Game+, speedrun mode, ending gallery, bestiary and achievements. See `docs/CHECKLIST.md` for what is verified and what still needs real-device testing. Engine, tooling, saves, input, audio and render pipeline (Phase 0); core survival systems, Level 0 and the
 procedural Central Hub (Phase 1); Levels 1-5 and the Schoolhouse with new entities, puzzles, crafting and a companion (Phase 2); eight Act 2 levels with water and breath, darkness, light sections and eight more entities (Phase 3); ten Act 3 levels with the chase and the finale (Phase 4).
 Later phases are in `docs/MASTER.md`.
 
@@ -50,6 +50,8 @@ the same world. Difficulty never changes layouts, only pressure.
 | `npm run smoke` | Playwright end-to-end check (menus, settings persistence, new game, movement, debug console) |
 | `npm run shots` | Fixed-seed screenshots per level per tier into `./shots` |
 | `npm run perf` | Scripted flythrough per tier: frame time, draw calls, triangles, memory, chunk generation |
+| `npm run mobile` | Emulated phone check (touch controls, layout) |
+| `npm run balance` | Balance report across levels and difficulties |
 | `npm run verify` | typecheck + lint + tests + level validators |
 
 Debug console commands: type `help`. Includes `level`, `tier`, `noclip`, `god`, `timescale`, `overlay nav|rooms|path|chunks`,
@@ -58,3 +60,6 @@ Debug console commands: type `help`. Includes `level`, `tier`, `noclip`, `god`, 
 ## Assets
 Procedural by default. Optional CC0 PBR sets can be listed in `public/assets/cc0/manifest.json`; if absent the game uses its
 procedural textures.
+
+## Secrets and spoilers
+Not hinted in menus: there is a way to make the hum forget you in Level 0, and five small objects (Anchors) hide in off-path rooms across the acts. Both pay off at the Finale.
