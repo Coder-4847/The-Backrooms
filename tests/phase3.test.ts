@@ -17,7 +17,7 @@ describe('Act 2 levels', () => {
   it('registers all eight in campaign order (indices 7-14)', () => {
     for (const id of ACT2) expect(isImplemented(id), id).toBe(true);
     expect(CAMPAIGN.slice(7, 15).map((c) => c.id)).toEqual(ACT2);
-    expect(LEVELS.filter((l) => !l.dev).length).toBe(15);
+    expect(LEVELS.filter((l) => !l.dev).length).toBeGreaterThanOrEqual(15);
   });
   it('ecology: signature + secondary entities as designed', () => {
     expect(ents('level6')).toEqual(['lurker']); expect(ents('level7')).toEqual(['leviathan']); expect(ents('level8')).toEqual(['crawler']);

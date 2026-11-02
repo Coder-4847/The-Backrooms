@@ -35,6 +35,8 @@ export type SimEvent =
   | { type: 'lights'; lock: string; rooms: number[] }
   | { type: 'seq'; puzzle: string; ok: boolean; progress: number }
   | { type: 'splash'; x: number; z: number }
+  | { type: 'train'; on: boolean }
+  | { type: 'gaze'; wrong: boolean }
   | { type: 'pickup'; item: ItemSpawn }
   | { type: 'full'; item: ItemSpawn }
   | { type: 'note'; id: string }
@@ -62,6 +64,7 @@ export interface SimOptions {
 export interface SimSnapshot { collected: string[]; keys: string[]; openDoors: number[]; activated: number[]; time: number; notes: string[]; respawn: { x: number; z: number; yaw: number } }
 
 export const REACH = 1.9;
+const plan_cold = (s: { plan: LevelPlan }): boolean => !!s.plan.cold;
 
 const lockHint = (lock: string): string => lock.startsWith('fuse') ? 'Dead transformer bay: needs a fuse' : lock.startsWith('pry') ? 'Stuck door: needs a crowbar' : lock.startsWith('valves') ? 'Sealed: the valves must be aligned' : lock.startsWith('rope') ? 'Chasm: needs a grappling hook' : lock.startsWith('seq') ? 'Rack lock: servers must be rebooted in order' : lock.startsWith('breaker') ? 'Dead section: flip its breaker' : 'Locked';
 
@@ -90,6 +93,12 @@ export class LevelSim {
   /** Depth of the room the player stands in, for footsteps and visuals. */
   waterHere: 'wade' | 'swim' | 'flooded' | null = null;
   outOfAir = false;
+  trail: { t: number; x: number; z: number }[] = [];
+  private trailT = 0;
+  trainActive = false;
+  alert = false;
+  alertT = 0;
+  inWarm = true;
   flares: { x: number; z: number; t: number }[] = [];
   glows: { x: number; z: number; t: number }[] = [];
   dead = false;
@@ -116,6 +125,7 @@ export class LevelSim {
       this.world.add(`door:${conn.id}`, [this.doorBox(conn)]);
     }
     for (const h of plan.hides ?? []) this.world.add(`hide:${h.id}`, [{ x0: h.pos.x - 0.3, x1: h.pos.x + 0.3, z0: h.pos.z - 0.3, z1: h.pos.z + 0.3 }]);
+    if (plan.open) { const b = plan.bounds; this.world.add('perimeter', [{ x0: b.x0 - 1, x1: b.x0, z0: b.z0 - 1, z1: b.z1 + 1 }, { x0: b.x1, x1: b.x1 + 1, z0: b.z0 - 1, z1: b.z1 + 1 }, { x0: b.x0 - 1, x1: b.x1 + 1, z0: b.z0 - 1, z1: b.z0 }, { x0: b.x0 - 1, x1: b.x1 + 1, z0: b.z1, z1: b.z1 + 1 }]); }
     this.respawn = { x: plan.spawn.pos.x, z: plan.spawn.pos.z, yaw: 0 };
     this.player.place(this.respawn.x, this.respawn.z, 0);
     const seed = opts.seed ?? plan.seed;
@@ -134,7 +144,7 @@ export class LevelSim {
     this.unlit = new Set(plan.unlit ?? []);
     for (const w of plan.water ?? []) this.water.set(w.room, w.depth);
     this.x = new SimExtras(this);
-    for (const pr of plan.props ?? []) this.world.add(`prop:${pr.x},${pr.z}`, [{ x0: pr.x - pr.w / 2, x1: pr.x + pr.w / 2, z0: pr.z - pr.d / 2, z1: pr.z + pr.d / 2 }]);
+    for (const pr of (plan.props ?? []).filter((q) => !q.soft)) this.world.add(`prop:${pr.x},${pr.z}`, [{ x0: pr.x - pr.w / 2, x1: pr.x + pr.w / 2, z0: pr.z - pr.d / 2, z1: pr.z + pr.d / 2 }]);
     this.percept = { x: 0, z: 0, yaw: 0, hidden: false, crouching: false, noise: 0, light: 0.6, flashOn: false, flashPower: 0, flares: [] };
     this.ctx = { player: this.percept, noise: this.noise, openLocks: this.keys, diff: this.diff, director: this.director, mode: opts.mode ?? 'active', pass: 'none' };
     this.ew.listeners.push((e) => {
@@ -188,6 +198,13 @@ export class LevelSim {
     this.outOfAir = this.stats.updateBreath(dt, diving, this.diff, wd === 'flooded' ? 4 : 3.2);
     if (wd && p.speed > 0.4 && Math.floor(this.time * 3) !== Math.floor((this.time - dt) * 3)) this.emit({ type: 'splash', x: p.x, z: p.z });
 
+    // cold, schedule, trail, alert
+    if (plan_cold(this)) { const c = this.plan.cold!; this.inWarm = c.warm.includes(this.room) || this.safeRoom || this.flares.some((f) => Math.hypot(f.x - p.x, f.z - p.z) < 4); this.stats.updateWarmth(dt, !this.inWarm, c.rate, this.diff); }
+    const sc = this.plan.schedule;
+    if (sc) { const on = ((this.time + sc.offset) % sc.period) < sc.window; if (on !== this.trainActive) { this.trainActive = on; this.emit({ type: 'train', on }); if (on) this.noise.emit(this.room, p.x, p.z, 0.8); } }
+    this.trailT -= dt; if (this.trailT <= 0) { this.trailT = 0.25; this.trail.push({ t: this.time, x: p.x, z: p.z }); if (this.trail.length > 200) this.trail.shift(); }
+    if (this.alert) { this.alertT -= dt; if (this.alertT <= 0) this.alert = false; }
+
     // hotbar + item use + lights
     for (let i = 0; i < 4; i++) if (f.pressed[`Slot${i + 1}` as 'Slot1']) this.inv.selected = i;
     if (f.pressed.NextItem) this.inv.selected = (this.inv.selected + 1) % 4;
@@ -216,7 +233,8 @@ export class LevelSim {
     pc.x = p.x; pc.z = p.z; pc.yaw = p.yaw; pc.hidden = !!this.hidden; pc.crouching = p.crouching; pc.noise = loud;
     pc.light = this.lightLevel; pc.flashOn = this.flash.on && this.inv.has('flashlight'); pc.flashPower = this.flash.output(this.time);
     pc.flares = this.flares; pc.water = this.waterHere !== null;
-    this.ctx.pass = this.x.passHeld;
+    this.ctx.pass = this.x.passHeld; this.ctx.time = this.time; this.ctx.trail = this.trail; this.ctx.alert = this.alert; this.ctx.trainActive = this.trainActive;
+    this.ctx.safeSpots = [...this.activatedWaypoints].map((i) => this.waypoints[i].pos);
     this.x.update(dt, f);
     this.ew.update(dt, this.ctx);
 
@@ -245,7 +263,7 @@ export class LevelSim {
     for (const d of this.doors.values()) if (!d.open) out.push({ kind: 'door', x: d.conn.door.x, z: d.conn.door.z, label: this.keys.has(d.conn.lock!) ? 'Unlock door' : lockHint(d.conn.lock!), ref: d });
     this.waypoints.forEach((w, i) => out.push({ kind: 'waypoint', x: w.pos.x, z: w.pos.z, label: this.activatedWaypoints.has(i) ? 'Checkpoint (set)' : 'Activate checkpoint', ref: i }));
     for (const h of this.plan.hides ?? []) out.push({ kind: 'hide', x: h.pos.x, z: h.pos.z, label: h.kind === 'locker' ? 'Hide in locker' : 'Hide under desk', ref: h });
-    if (!this.plan.hub) out.push({ kind: 'exit', x: this.plan.exit.pos.x, z: this.plan.exit.pos.z, label: 'Leave', ref: null });
+    if (!this.plan.hub && !this.plan.finale) out.push({ kind: 'exit', x: this.plan.exit.pos.x, z: this.plan.exit.pos.z, label: 'Leave', ref: null });
     if (this.extra) out.push(...this.extra());
     out.push(...this.x.interactables());
     const near = out.filter((o) => Math.hypot(o.x - p.x, o.z - p.z) <= REACH);
@@ -263,9 +281,7 @@ export class LevelSim {
       else if (this.inv.add(it.item) > 0) { this.emit({ type: 'full', item: it }); return t; }
       else { this.collected.add(it.id); if (it.kind === 'key' && it.unlocks) this.keys.add(it.unlocks); this.noise.emit(this.room, p.x, p.z, NOISE.pickup); this.emit({ type: 'pickup', item: it }); }
     } else if (t.kind === 'door') {
-      const d = t.ref as { conn: Connection; open: boolean };
-      if (this.keys.has(d.conn.lock!)) { d.open = true; this.world.remove(`door:${d.conn.id}`); this.noise.emit(this.room, p.x, p.z, NOISE.door); this.emit({ type: 'unlock', connection: d.conn }); }
-      else this.emit({ type: 'locked', lock: d.conn.lock! });
+      this.openDoor(t.ref as { conn: Connection; open: boolean });
     } else if (t.kind === 'waypoint') {
       const i = t.ref as number;
       this.activatedWaypoints.add(i);
@@ -281,6 +297,14 @@ export class LevelSim {
     } else if (t.kind === 'custom') { const r = t.ref as { type: string; id?: number }; if (!this.x.handle(r as never)) this.emit({ type: r.type === 'talk' ? 'talk' : 'custom', ref: t.ref, id: r.id } as never); }
     else { this.finished = true; this.emit({ type: 'exit' }); }
     return t;
+  }
+
+  /** Unlock a door if the key/puzzle is held (also used directly by the bot, so a nearby waypoint can never steal the interaction). */
+  openDoor(d: { conn: Connection; open: boolean }): boolean {
+    const p = this.player;
+    if (this.keys.has(d.conn.lock!)) { d.open = true; this.world.remove(`door:${d.conn.id}`); this.noise.emit(this.room, p.x, p.z, NOISE.door); this.emit({ type: 'unlock', connection: d.conn }); return true; }
+    this.emit({ type: 'locked', lock: d.conn.lock! });
+    return false;
   }
 
   /** Use the held hotbar item: consumables apply their effect, lights get placed. */

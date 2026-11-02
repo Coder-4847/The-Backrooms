@@ -16,6 +16,8 @@ export interface Room {
   height: number;
   /** Visual/material variant index within the level. */
   variant: number;
+  /** Outdoor room: floor only (no walls or ceiling). Used by the Wheat Field, the City rooftops. */
+  open?: boolean;
 }
 
 export interface Connection {
@@ -53,7 +55,7 @@ export interface PuzzleDef {
   hintNote: string;
 }
 /** Static prop box (racks, desks, pipes...) placed along walls; has a collider. */
-export interface PropDef { kind: string; x: number; z: number; w: number; d: number; h: number; color: number }
+export interface PropDef { kind: string; x: number; z: number; w: number; d: number; h: number; color: number; /** visual only: you walk through it (wheat) */ soft?: boolean }
 /** Posted rule (Terror Hotel): some are false. */
 export interface RuleDef { id: string; kind: 'noRunning' | 'noLight' | 'noNoise' | 'noKnock'; text: string; real: boolean }
 
@@ -83,6 +85,8 @@ export interface LevelPlan {
   /** Sound travels with less damping in pipe tunnels etc. */
   acoustics?: { damping: number };
   rules?: RuleDef[];
+  /** What enforces the rules: the Concierge (default) or the Partygoers (they turn on you). */
+  ruleEntity?: 'concierge' | 'partygoers';
   /** Water: per-room depth. wade = slow + splashy; swim = surface swimming (Crouch dives, breath drains); flooded = must dive. */
   water?: { room: number; depth: 'wade' | 'swim' | 'flooded'; sludge?: boolean }[];
   /** Rooms whose ceiling lights start off (dark levels, unrestored garage sections). Breakers restore them. */
@@ -93,6 +97,16 @@ export interface LevelPlan {
   beacons?: Vec2[];
   /** Fraction of ceiling lights that flicker (default 0.18); Hospital uses a lot. */
   flicker?: number;
+  /** Cold (Arctic): warmth drains outside `warm` rooms; blizzard gusts hide things. */
+  cold?: { rate: number; warm: number[] };
+  /** Metro: a train passes every `period` seconds for `window` seconds; Platform Wraiths only exist then. */
+  schedule?: { period: number; window: number; offset: number };
+  /** Gallery: portraits on walls; staring at a wrong one summons the Curator. */
+  portraits?: { x: number; z: number; yaw: number; wrong: boolean }[];
+  /** The Finale: the exit is replaced by the Architect's decision. */
+  finale?: boolean;
+  /** Open level: outer perimeter is walled by colliders instead of room walls. */
+  open?: boolean;
   /** Fully dark level: base light is near zero (flashlight and sound only). */
   dark?: boolean;
   /** Offices: the badge question real coworkers answer correctly. */

@@ -27,6 +27,7 @@ export const ITEMS: Record<string, ItemDef> = Object.fromEntries([
   I({ id: 'fuse2', name: 'Fuse (blue)', kind: 'key', w: 1, h: 1, weight: 0.2, stack: 1, essential: true, desc: 'A heavy ceramic fuse. Fits a transformer bay.' }),
   I({ id: 'fuse3', name: 'Fuse (white)', kind: 'key', w: 1, h: 1, weight: 0.2, stack: 1, essential: true, desc: 'A heavy ceramic fuse. Fits a transformer bay.' }),
   I({ id: 'grapple', name: 'Grappling hook', kind: 'tool', w: 1, h: 2, weight: 1.0, stack: 1, essential: true, desc: 'Rope and a hook. Crosses chasms where you can anchor it.' }),
+  I({ id: 'compass', name: 'Compass', kind: 'tool', w: 1, h: 1, weight: 0.1, stack: 1, essential: true, desc: 'Shows your heading. Unreliable in some places.' }),
   I({ id: 'crowbar', name: 'Crowbar', kind: 'tool', w: 1, h: 2, weight: 1.2, stack: 1, essential: true, desc: 'Pries stuck doors and vents. Loud.' }),
   I({ id: 'rag', name: 'Rag', kind: 'misc', w: 1, h: 1, weight: 0.1, stack: 4, desc: 'Oily cloth. Useful in crafting.' }),
   I({ id: 'bottle', name: 'Empty bottle', kind: 'misc', w: 1, h: 1, weight: 0.2, stack: 4, desc: 'Glass. Breaks loudly when thrown.' }),

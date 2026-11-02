@@ -286,4 +286,32 @@ export class Sounds {
     const g = c.createGain(); g.gain.setValueAtTime(level, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
     n.connect(f).connect(g).connect(out); n.start(t, Math.random(), 0.4);
   }
+
+  /** Train pass: low rumble that swells, a screech and a horn. */
+  train(out: AudioNode, dur = 9): void {
+    const c = this.ctx, t = c.currentTime;
+    const n = this.a.noiseSource(); const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.setValueAtTime(120, t); lp.frequency.linearRampToValueAtTime(900, t + dur * 0.5); lp.frequency.linearRampToValueAtTime(100, t + dur);
+    const g = c.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.5, t + dur * 0.45); g.gain.linearRampToValueAtTime(0, t + dur);
+    n.connect(lp).connect(g).connect(out); n.start(t, 0, dur);
+    const h = c.createOscillator(); h.type = 'sawtooth'; h.frequency.value = 311; const hg = c.createGain(); hg.gain.setValueAtTime(0, t + 1); hg.gain.linearRampToValueAtTime(0.18, t + 1.1); hg.gain.linearRampToValueAtTime(0, t + 3.2);
+    h.connect(hg).connect(out); h.start(t + 1); h.stop(t + 3.3);
+    this.a.caption('[a train thunders past]', dur * 800);
+  }
+
+  /** Wind gust: filtered noise swell (blizzard, wheat field). */
+  wind(out: AudioNode, dur = 4): void {
+    const c = this.ctx, t = c.currentTime;
+    const n = this.a.noiseSource(); const f = c.createBiquadFilter(); f.type = 'bandpass'; f.frequency.setValueAtTime(400, t); f.frequency.linearRampToValueAtTime(900, t + dur / 2); f.frequency.linearRampToValueAtTime(350, t + dur); f.Q.value = 0.6;
+    const g = c.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.35, t + dur / 2); g.gain.linearRampToValueAtTime(0, t + dur);
+    n.connect(f).connect(g).connect(out); n.start(t, Math.random(), dur);
+  }
+
+  /** Ending sting: a held chord that resolves (or does not). */
+  ending(out: AudioNode, minor = false): void {
+    const c = this.ctx, t = c.currentTime;
+    for (const f of minor ? [220, 261.6, 311.1] : [220, 277.2, 329.6]) {
+      const o = c.createOscillator(); o.type = 'sine'; o.frequency.value = f; const g = c.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.14, t + 1.5); g.gain.linearRampToValueAtTime(0, t + 7);
+      o.connect(g).connect(out); o.start(t); o.stop(t + 7.1);
+    }
+  }
 }

@@ -19,6 +19,7 @@ export class EntityVisuals {
       if (!b) { b = buildBody(e.def.id, this.level); this.bodies.set(e.id, b); this.scene.add(b.group); }
       b.group.position.set(e.x, 0, e.z);
       b.group.rotation.y = e.yaw;
+      b.group.visible = !(e.data.hidden || e.data.cloaked);
       b.update(e.speed, t, dt, e.state === 'tell', e.seenByPlayer);
       if (e.def.behavior === 'coworker' || e.def.behavior === 'skinstealer' || e.def.behavior === 'monitor') {
         let sh = this.shadows.get(e.id);

@@ -118,7 +118,7 @@ export function validatePlan(def: Pick<LevelDef, 'targetSeconds'>, plan: LevelPl
 
   // props: inside their room, never on nav nodes, doors, items or puzzle parts (so nothing is blocked)
   const boxDist = (b: { x: number; z: number; w: number; d: number }, x: number, z: number) => Math.hypot(Math.max(Math.abs(x - b.x) - b.w / 2, 0), Math.max(Math.abs(z - b.z) - b.d / 2, 0));
-  for (const b of plan.props ?? []) {
+  for (const b of (plan.props ?? []).filter((q) => !q.soft)) {
     if (!R.some((r) => b.x - b.w / 2 >= r.x && b.x + b.w / 2 <= r.x + r.w && b.z - b.d / 2 >= r.z && b.z + b.d / 2 <= r.z + r.d)) fail(`prop ${b.kind} not inside one room`);
     if (plan.nav.nodes.some((n) => boxDist(b, n.pos.x, n.pos.z) < 0.7)) fail(`prop ${b.kind} blocks a nav node`);
     if (plan.connections.some((c) => boxDist(b, c.door.x, c.door.z) < 1.4)) fail(`prop ${b.kind} blocks a doorway`);

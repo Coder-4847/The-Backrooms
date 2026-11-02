@@ -7,7 +7,7 @@ import { generateGraphLevel, type GraphOptions } from '../gen/graph';
 import { Rng, deriveSeed } from '../gen/rng';
 import type { HideSpot, ItemSpawn, LevelDef, LevelLook, LevelPlan, PropDef, Room, Vec2 } from '../gen/types';
 
-export interface PropSpec { kind: string; w: number; d: number; h: number; color: number; count: number }
+export interface PropSpec { kind: string; w: number; d: number; h: number; color: number; count: number; /** scatter anywhere, no collision (wheat, snow drifts) */ soft?: boolean }
 export interface Ecology { entity: string; where: 'near' | 'far' | 'path'; /** which path slot (0-based) when where = 'path' */ index?: number }
 export interface Guaranteed { item: string; count: number; where: 'supply' | 'any' | 'far' | 'deadend'; kind?: ItemSpawn['kind'] }
 
@@ -33,6 +33,12 @@ export interface LevelSpec {
   lights?: 'dark' | 'sections';
   flicker?: number;
   beacons?: boolean;
+  /** Fraction of ordinary rooms that are outdoors (floor only). 1 = a field. */
+  open?: number;
+  cold?: { rate: number; /** extra heated shelters along the route */ shelters: number };
+  schedule?: { period: number; window: number; offset: number };
+  portraits?: { count: number; wrong: number };
+  ruleEntity?: 'concierge' | 'partygoers';
 }
 
 const cen = (r: Room): Vec2 => ({ x: r.x + r.w / 2, z: r.z + r.d / 2 });
@@ -72,6 +78,11 @@ export function addProps(plan: LevelPlan, rng: Rng, specs: PropSpec[]): void {
   const clear = keepClear(plan);
   const open = keepOpen(plan);
   for (const s of specs) {
+    if (s.soft) {
+      const pool = plan.rooms.filter((r) => r.open);
+      for (let i = 0; i < s.count && pool.length; i++) { const r = rng.pick(pool); props.push({ kind: s.kind, x: r.x + 1 + rng.next() * (r.w - 2), z: r.z + 1 + rng.next() * (r.d - 2), w: s.w, d: s.d, h: s.h * (0.8 + rng.next() * 0.4), color: s.color, soft: true }); }
+      continue;
+    }
     let placed = 0, tries = 0;
     while (placed < s.count && tries++ < s.count * 30) {
       const r = rng.pick(plan.rooms);
@@ -175,6 +186,26 @@ export function addLights(plan: LevelPlan, mode: 'dark' | 'sections'): void {
   plan.unlit = plan.rooms.filter((r) => seg(r.id) > 0 && !keep.has(r.id)).map((r) => r.id);
 }
 
+export function addOpen(plan: LevelPlan, rng: Rng, frac: number): void {
+  for (const r of plan.rooms) if ((r.kind === 'room' || r.kind === 'hall' || r.kind === 'dead' || r.kind === 'start') && rng.chance(frac)) r.open = true;
+  plan.open = true;
+}
+
+export function addPortraits(plan: LevelPlan, rng: Rng, o: { count: number; wrong: number }): void {
+  const out: NonNullable<LevelPlan['portraits']> = [];
+  const clear = keepClear(plan);
+  let tries = 0;
+  while (out.length < o.count && tries++ < o.count * 40) {
+    const r = rng.pick(plan.rooms.filter((q) => !q.open && q.kind !== 'start'));
+    const side = rng.int(0, 3), along = rng.range(1.5, (side < 2 ? r.w : r.d) - 1.5);
+    const pos = side === 0 ? { x: r.x + along, z: r.z + 0.3 } : side === 1 ? { x: r.x + along, z: r.z + r.d - 0.3 } : side === 2 ? { x: r.x + 0.3, z: r.z + along } : { x: r.x + r.w - 0.3, z: r.z + along };
+    if (clear.some((c) => Math.hypot(c.p.x - pos.x, c.p.z - pos.z) < Math.min(c.r, 2.2)) || out.some((q) => Math.hypot(q.x - pos.x, q.z - pos.z) < 2)) continue;
+    const yaw = side === 0 ? Math.PI : side === 1 ? 0 : side === 2 ? -Math.PI / 2 : Math.PI / 2; // facing direction = (-sin yaw, -cos yaw), into the room
+    out.push({ ...pos, yaw, wrong: rng.chance(o.wrong) });
+  }
+  plan.portraits = out;
+}
+
 export function makeLevel(spec: LevelSpec): LevelDef {
   return {
     id: spec.id, name: spec.name, act: spec.act, tier: spec.tier, door: spec.door, targetSeconds: spec.targetSeconds, intensity: spec.intensity, look: spec.look,
@@ -189,9 +220,19 @@ export function makeLevel(spec: LevelSpec): LevelDef {
       if (spec.flicker !== undefined) plan.flicker = spec.flicker;
       if (spec.water) addWater(plan, rng, spec.water);
       if (spec.lights) addLights(plan, spec.lights);
+      if (spec.ruleEntity) plan.ruleEntity = spec.ruleEntity;
+      if (spec.schedule) plan.schedule = spec.schedule;
+      if (spec.open) addOpen(plan, rng, spec.open);
+      if (spec.cold) {
+        // heated shelters along the route + the supply rooms; everything else is freezing
+        const path = plan.criticalPath;
+        for (let i = 1; i <= spec.cold.shelters; i++) { const room = plan.rooms[path[Math.floor((i / (spec.cold.shelters + 1)) * (path.length - 1))]]; if (room.kind === 'room' || room.kind === 'hall') room.kind = 'supply'; }
+        plan.cold = { rate: spec.cold.rate, warm: plan.rooms.filter((r) => r.kind === 'supply' || r.kind === 'start').map((r) => r.id) };
+      }
       if (spec.beacons) plan.beacons = [plan.exit.pos, ...plan.waypoints.map((w) => w.pos)];
       spec.extra?.(plan, rng); // before props/hides so they steer clear of anything extra placed
       if (spec.props) addProps(plan, rng, spec.props);
+      if (spec.portraits) addPortraits(plan, rng, spec.portraits);
       if (spec.hides) addHides(plan, rng, spec.hides);
       return plan;
     },

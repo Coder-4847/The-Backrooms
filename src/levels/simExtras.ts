@@ -21,6 +21,7 @@ export class SimExtras {
   companion: Entity | null = null;
   companionLost = false;
   violations = 0;
+  gaze = 0;
   passHeld: 'none' | 'real' | 'forged' = 'none';
 
   constructor(private sim: LevelSim) {
@@ -51,6 +52,15 @@ export class SimExtras {
       const broken = (r.kind === 'noRunning' && p.sprinting && inHall) || (r.kind === 'noLight' && s.flash.on && s.inv.has('flashlight') && inHall) || (r.kind === 'noNoise' && p.noise > 0.9 && inHall);
       if (broken) this.violate(r.text);
     }
+    // gallery gaze: staring at a wrong portrait for ~2.5 s summons the Curator
+    let staring = false;
+    for (const pt of s.plan.portraits ?? []) {
+      const dx = pt.x - p.x, dz = pt.z - p.z, d = Math.hypot(dx, dz);
+      const looking = d < 9 && (dx * -Math.sin(p.yaw) + dz * -Math.cos(p.yaw)) / Math.max(d, 1e-6) > 0.94 && !s.world.segmentBlocked(p.x, p.z, pt.x, pt.z);
+      if (looking && pt.wrong) { this.gaze += dt; staring = true; }
+    }
+    if (!staring && this.gaze > 0) this.gaze = Math.max(0, this.gaze - dt * 0.6);
+    if (this.gaze > 2.5 && this.ruleCooldown <= 0 && !s.hidden) { this.gaze = 0; this.ruleCooldown = 30; this.violations++; this.summon('curator', 'You met the wrong portrait\'s gaze.'); }
     // hostile entities can hurt the companion
     const c = this.companion;
     if (c && (c.data.hp as number) > 0) {
@@ -66,13 +76,19 @@ export class SimExtras {
   }
 
   violate(text: string): void {
+    const s = this.sim;
+    if (s.plan.ruleEntity === 'partygoers') { this.ruleCooldown = 30; this.violations++; s.alert = true; s.alertT = 60; s.emit({ type: 'violation', rule: text }); return; }
+    this.summon('concierge', text);
+  }
+
+  summon(def: string, text: string): void {
     const s = this.sim, p = s.player;
-    this.ruleCooldown = 30; this.violations++;
-    // spawn the Concierge out of sight, 14-26 m away (nearest room centre in that band)
+    if (def === 'concierge') { this.ruleCooldown = 30; this.violations++; }
+    // spawn out of sight, 14-26 m away (nearest room centre in that band)
     const rooms = s.plan.rooms.map((r) => ({ x: r.x + r.w / 2, z: r.z + r.d / 2 })).filter((q) => { const d = Math.hypot(q.x - p.x, q.z - p.z); return d > 14 && d < 28 && !s.world.segmentBlocked(p.x, p.z, q.x, q.z); });
     const far = s.plan.rooms.map((r) => ({ x: r.x + r.w / 2, z: r.z + r.d / 2 })).filter((q) => Math.hypot(q.x - p.x, q.z - p.z) > 12);
     const at: Vec2 = rooms[0] ?? far[0] ?? { x: p.x + 10, z: p.z };
-    const e = s.ew.spawn('concierge', at.x, at.z, 90 + this.violations);
+    const e = s.ew.spawn(def, at.x, at.z, 90 + this.violations);
     e.data.life = 70;
     s.emit({ type: 'violation', rule: text });
   }
@@ -89,6 +105,7 @@ export class SimExtras {
     }
     for (const e of s.ew.entities) {
       if (e.def.behavior === 'coworker' || (e.def.behavior === 'skinstealer' && e.data.disguised !== false && e.state !== 'chase' && e.state !== 'tell')) out.push({ kind: 'custom', x: e.x, z: e.z, label: 'Talk to coworker', ref: { type: 'talk', id: e.id } });
+      if (e.def.behavior === 'architect') out.push({ kind: 'custom', x: e.x, z: e.z, label: 'Sit with the Architect', ref: { type: 'architect', id: e.id } });
       if (e.def.behavior === 'companion' && !e.data.following) out.push({ kind: 'custom', x: e.x, z: e.z, label: 'Ask Pim to come along', ref: { type: 'recruit', id: e.id } });
     }
     return out;

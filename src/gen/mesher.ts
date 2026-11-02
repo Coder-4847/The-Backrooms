@@ -109,6 +109,10 @@ export function meshChunk(plan: LevelPlan, cx: number, cz: number, q: MeshQualit
     const floorMat: MatKey = r.kind === 'supply' ? 'floorTile' : 'floor';
     const x0 = r.x, x1 = r.x + r.w, z0 = r.z, z1 = r.z + r.d;
 
+    if (r.open) {
+      B(floorMat).quad([x0, 0, z1], [x1, 0, z1], [x1, 0, z0], [x0, 0, z0], [0, 1, 0], [x0 * S, z1 * S], [x1 * S, z1 * S], [x1 * S, z0 * S], [x0 * S, z0 * S]);
+      continue; // outdoors: no walls, ceiling or lamps
+    }
     // floor + ceiling (full rect, so no gaps under thick walls)
     B(floorMat).quad([x0, 0, z1], [x1, 0, z1], [x1, 0, z0], [x0, 0, z0], [0, 1, 0], [x0 * S, z1 * S], [x1 * S, z1 * S], [x1 * S, z0 * S], [x0 * S, z0 * S]);
     B('ceiling').quad([x0, H, z0], [x1, H, z0], [x1, H, z1], [x0, H, z1], [0, -1, 0], [x0 * S, z0 * S], [x1 * S, z0 * S], [x1 * S, z1 * S], [x0 * S, z1 * S]);

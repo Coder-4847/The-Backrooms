@@ -25,6 +25,8 @@ export class Stats {
   fear = 0;
   /** Breath 0..100: drains while diving, refills at the surface (spec 5.1 hold-breath). */
   breath = 100;
+  /** Warmth 0..100 (Arctic): drains in the cold, refills in warm rooms; frostbite below 0. */
+  warmth = 100;
   dead = false;
   private hallucTimer = 20;
 
@@ -58,6 +60,11 @@ export class Stats {
     else this.breath = Math.min(100, this.breath + 28 * dt);
     if (diving && this.breath <= 0) { this.damage(9 * dt, d, true); return true; }
     return false;
+  }
+
+  updateWarmth(dt: number, cold: boolean, rate: number, d: DifficultyDef): void {
+    if (cold) this.warmth = Math.max(0, this.warmth - rate * Math.min(2, d.damageTaken) * dt); else this.warmth = Math.min(100, this.warmth + 14 * dt);
+    if (cold && this.warmth <= 0) this.damage(2.5 * dt, d, true);
   }
 
   damage(n: number, d: DifficultyDef, raw = false): void {

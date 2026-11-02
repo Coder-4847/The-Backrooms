@@ -23,7 +23,7 @@ export class SceneFx {
         const out = this.spatial(e.entity.x, e.entity.z, 'voice', 0.1);
         if (s && out) {
           const id = e.entity.def.id;
-          if (id === 'hound' || id === 'crawler') s.growl(out, id === 'crawler' ? 0.8 : 1.2); else if (id === 'howler') s.scream(out); else if (id === 'lurker') s.rumble(out); else if (id === 'leviathan' || id === 'drowned') s.surge(out); else if (id === 'smiler') s.grin(out); else if (id === 'static') s.staticBurst(out, 1.2); else if (id === 'leech') s.splash(out, 0.5); else if (id === 'concierge') s.bell(out); else if (id === 'monitor') s.whistle(out); else s.stickTell(out);
+          if (id === 'hound' || id === 'crawler') s.growl(out, id === 'crawler' ? 0.8 : 1.2); else if (id === 'howler') s.scream(out); else if (id === 'lurker') s.rumble(out); else if (id === 'leviathan' || id === 'drowned') s.surge(out); else if (id === 'smiler' || id === 'partygoer') s.grin(out); else if (id === 'pursuer') s.rumble(out, 1.2); else if (id === 'stalker') s.wind(out, 1.4); else if (id === 'echo' || id === 'windowman') s.staticBurst(out, 0.9); else if (id === 'wraith') s.whistle(out); else if (id === 'curator') s.bell(out); else if (id === 'static') s.staticBurst(out, 1.2); else if (id === 'leech') s.splash(out, 0.5); else if (id === 'concierge') s.bell(out); else if (id === 'monitor') s.whistle(out); else s.stickTell(out);
         }
         g.glitch = Math.max(g.glitch, 0.25);
         this.svc.input.rumble(0.2, 0.5, 400);
@@ -49,6 +49,7 @@ export class SceneFx {
       case 'radio': { const o = this.spatial(e.x, e.z, 'sfx', 0.1); if (o && s) { for (let i = 0; i < 4; i++) setTimeout(() => s.staticBurst(o, 1.0), i * 1500); } bus.emit('toast', { text: 'Radio lure on (20 s). Things will come to it.' }); break; }
       case 'valve': { if (s && a) s.valve(a.flat('sfx', 0.3)); if (e.solved) bus.emit('toast', { text: 'Valves aligned. Somewhere, a gate unlocks.' }); break; }
       case 'puzzle': g.glitch = 0.5; break;
+      case 'train': if (e.on && s && a) s.train(a.flat('sfx', 0.4)); break;
       case 'splash': { const o = this.spatial(e.x, e.z, 'sfx', 0.1); if (o && s) s.splash(o, this.sim.waterHere === 'wade' ? 0.25 : 0.4); break; }
       case 'seq': bus.emit('toast', { text: e.ok ? `Server up (${e.progress})` : 'Wrong order: the rack resets.', kind: e.ok ? 'info' : 'warn' }); if (!e.ok) g.glitch = 0.6; break;
       case 'lights': if (s && a) s.creak(a.flat('sfx', 0.3), 0.5); bus.emit('toast', { text: 'Power restored to a section.' }); break;

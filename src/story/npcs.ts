@@ -51,4 +51,15 @@ export const NPCS: Record<string, NpcDef> = {
       flare: { text: 'Hounds scatter from those. The things below do not care.', choices: [{ text: 'Back.', next: 'hello' }, { text: '(leave)' }] },
     },
   },
+  hale: {
+    id: 'hale', name: 'Dr. Hale', role: 'Medic (returned)', color: 0x8a9aa0, blip: 130, start: 'hello',
+    nodes: {
+      hello: { text: 'You remember me. I am not sure I remember me. The Gantry is the last stretch before the Architect. Whatever you carry, it is enough. Whatever you left, it will wait.', choices: [
+        { text: 'What is the Architect?', next: 'arch' }, { text: 'What should I know about the last levels?', next: 'last' },
+        { text: 'Could you patch me up?', give: { item: 'bandage', n: 2 }, once: 'hale_bandage', next: 'patch' }, { text: '(leave)' }] },
+      arch: { text: 'A very patient draftsman. It is not cruel. It built one door too many and has been waiting for someone to ask whether to use it.', choices: [{ text: 'Back.', next: 'hello' }] },
+      last: { text: 'The Metro keeps a schedule; the Carnival keeps rules; the Suburbs keep watching. The Arctic wants you warm. The Gallery wants you to look away. At the end something follows. Do not stop running.', choices: [{ text: 'Back.', next: 'hello' }] },
+      patch: { text: 'There. Do not make me regret it.', choices: [{ text: 'Back.', next: 'hello' }, { text: '(leave)' }] },
+    },
+  },
 };

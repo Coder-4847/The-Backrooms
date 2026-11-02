@@ -1,7 +1,7 @@
 /** Entity definition table (spec 7). Behavior modules read these numbers; difficulty multiplies them. */
 export interface EntityDef {
   id: string; name: string;
-  behavior: 'stick' | 'hound' | 'howler' | 'coworker' | 'skinstealer' | 'concierge' | 'monitor' | 'companion' | 'lurker' | 'leviathan' | 'crawler' | 'smiler' | 'drowned' | 'leech' | 'static';
+  behavior: 'stick' | 'hound' | 'howler' | 'coworker' | 'skinstealer' | 'concierge' | 'monitor' | 'companion' | 'lurker' | 'leviathan' | 'crawler' | 'smiler' | 'drowned' | 'leech' | 'static' | 'wraith' | 'partygoer' | 'stalker' | 'windowman' | 'echo' | 'curator' | 'pursuer' | 'architect';
   /** metres/second */
   walk: number; run: number;
   radius: number; height: number;
@@ -32,4 +32,13 @@ export const ENTITIES: Record<string, EntityDef> = {
   leech: { id: 'leech', name: 'Sludge Leech', behavior: 'leech', walk: 0.9, run: 1.4, radius: 0.45, height: 0.5, sightRange: 8, sightFov: 6.3, hearing: 0.8, tell: 1.0, damage: 3, cooldown: 1, packSize: [1, 1] },
   static: { id: 'static', name: 'Static', behavior: 'static', walk: 1.4, run: 2.4, radius: 0.35, height: 1.9, sightRange: 16, sightFov: 6.3, hearing: 0.5, tell: 1.3, damage: 9, cooldown: 2.5, packSize: [1, 1] },
   faceling: { id: 'faceling', name: 'Faceling', behavior: 'skinstealer', walk: 1.1, run: 2.8, radius: 0.35, height: 1.7, sightRange: 16, sightFov: 3, hearing: 0.6, tell: 1.6, damage: 26, cooldown: 5, packSize: [1, 1] },
+  wraith: { id: 'wraith', name: 'Platform Wraith', behavior: 'wraith', walk: 1.6, run: 3.3, radius: 0.35, height: 2.0, sightRange: 18, sightFov: 3.2, hearing: 1.2, tell: 1.0, damage: 18, cooldown: 3, packSize: [1, 1] },
+  partygoer: { id: 'partygoer', name: 'Partygoer', behavior: 'partygoer', walk: 1.1, run: 2.5, radius: 0.35, height: 1.75, sightRange: 14, sightFov: 3, hearing: 0.6, tell: 0.9, damage: 9, cooldown: 1.6, packSize: [1, 1] },
+  watcher: { id: 'watcher', name: 'Watcher', behavior: 'stick', walk: 0.9, run: 1.9, radius: 0.35, height: 1.8, sightRange: 20, sightFov: 3, hearing: 0.3, tell: 1.4, damage: 15, cooldown: 6, packSize: [1, 1] },
+  stalker: { id: 'stalker', name: 'Whiteout Stalker', behavior: 'stalker', walk: 1.4, run: 2.7, radius: 0.4, height: 2.1, sightRange: 8, sightFov: 6.3, hearing: 0.8, tell: 1.4, damage: 22, cooldown: 5, packSize: [1, 1] },
+  windowman: { id: 'windowman', name: 'Window-Man', behavior: 'windowman', walk: 1.0, run: 2.2, radius: 0.35, height: 1.9, sightRange: 22, sightFov: 3.4, hearing: 0.2, tell: 1.4, damage: 18, cooldown: 5, packSize: [1, 1] },
+  echo: { id: 'echo', name: 'Motion Echo', behavior: 'echo', walk: 2.3, run: 4.0, radius: 0.3, height: 1.75, sightRange: 0, sightFov: 0, hearing: 0, tell: 1.0, damage: 40, cooldown: 6, packSize: [1, 1] },
+  curator: { id: 'curator', name: 'The Curator', behavior: 'curator', walk: 1.2, run: 2.6, radius: 0.4, height: 2.3, sightRange: 40, sightFov: 6.3, hearing: 1, tell: 1.6, damage: 24, cooldown: 5, packSize: [1, 1] },
+  pursuer: { id: 'pursuer', name: 'The Pursuer', behavior: 'pursuer', walk: 2.4, run: 2.7, radius: 0.9, height: 4.2, sightRange: 60, sightFov: 6.3, hearing: 1, tell: 1.2, damage: 100, cooldown: 6, packSize: [1, 1] },
+  architect: { id: 'architect', name: 'The Architect', behavior: 'architect', walk: 0, run: 0, radius: 0.4, height: 2.4, sightRange: 30, sightFov: 6.3, hearing: 0, tell: 0, damage: 0, cooldown: 0, packSize: [1, 1] },
 };

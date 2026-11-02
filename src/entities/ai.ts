@@ -47,6 +47,8 @@ export interface AiContext {
   diff: DifficultyDef; director: Director; mode: 'active' | 'observe';
   /** Hall pass in the backpack: none, real, or forged (Schoolhouse). */
   pass?: 'none' | 'real' | 'forged';
+  /** Simulated seconds, the player's recent path (Motion Echoes), carnival alert, a train passing, safe spots (waypoints). */
+  time?: number; trail?: { t: number; x: number; z: number }[]; alert?: boolean; trainActive?: boolean; safeSpots?: Vec2[];
 }
 
 export type EntityEvent =

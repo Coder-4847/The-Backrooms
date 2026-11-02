@@ -26,7 +26,7 @@ try {
   await waitState('playing');
   check('new game lands in the Central Hub', await ev(() => (window as any).__game.flow.inHub === true));
   const hub = await ev(() => { const p = (window as any).__game.level.plan; return { doors: p.hub.doors.length, npcs: p.hub.npcs.length, stations: p.hub.stations.length }; });
-  check('hub has doors, 3 survivors, stations', hub.doors >= 4 && hub.npcs === 4 && hub.stations >= 7, JSON.stringify(hub));
+  check('hub has doors, 3 survivors, stations', hub.doors >= 4 && hub.npcs === 5 && hub.stations >= 7, JSON.stringify(hub));
   check('starter inventory (flashlight, camcorder)', await ev(() => { const i = (window as any).__game.level.sim.inv; return i.has('flashlight') && i.has('camcorder'); }));
 
   // talk to Marlow and take the battery

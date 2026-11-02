@@ -205,3 +205,23 @@ export function talkPanel(game: Game, entityId: number, close: () => void): HTML
   game.soundBank?.blip(160);
   return root;
 }
+
+/** The Architect's decision (spec 8.6): the choices set the flags the ending resolver reads. */
+export function finalePanel(game: Game, close: () => void): HTMLElement {
+  const sim = game.level!.sim;
+  const flags = game.currentSlot?.flags ?? {};
+  const companion = !!game.currentSlot?.npcs.companion && (game.currentSlot.npcs.companion as { present?: boolean }).present === true;
+  const root = h('div', { class: 'screen center panel dialogue' }, h('h3', {}, 'The Architect', h('small', {}, 'seated at a drawing table')));
+  root.append(h('p', { class: 'say' }, 'You came all this way. I built a door for you, one more than I needed. You may leave. You may stay and draw. You may refuse and begin again. I will not stop you. I only ask that you decide.'));
+  const menu = h('div', { class: 'menu' });
+  const pick = (patch: Partial<import('../story/endings').EndingState>) => { close(); void game.flow.finishGame(patch); };
+  menu.append(h('button', { class: 'btn primary', onclick: () => pick({}) }, 'Take the exit key and leave'));
+  menu.append(h('button', { class: 'btn', onclick: () => pick({ acceptedArchitect: true }) }, 'Accept the pencil: stay and draw'));
+  menu.append(h('button', { class: 'btn', onclick: () => pick({ refusedExit: true }) }, 'Refuse the door'));
+  if (companion) menu.append(h('button', { class: 'btn', onclick: () => pick({ companionAlive: true, chosenStay: true }) }, 'Stay behind so Pim can leave'));
+  if ((Number(flags.anchors) || 0) >= 5) menu.append(h('button', { class: 'btn', onclick: () => pick({ trueDecision: true, anchorsFound: Number(flags.anchors) || 0 }) }, 'Lay the five anchors on the table'));
+  menu.append(h('button', { class: 'btn ghost', onclick: close }, 'Not yet'));
+  root.append(menu);
+  void sim;
+  return root;
+}

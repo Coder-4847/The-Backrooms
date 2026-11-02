@@ -36,7 +36,7 @@ describe('Central Hub', () => {
   it('has the Almond Outpost wing stations and 3 survivors', () => {
     const h = generateHub(1, 0).hub!;
     expect(new Set(h.stations.map((s) => s.kind))).toEqual(new Set(['stash', 'crafting', 'noteboard', 'bestiary', 'gallery', 'kitchen', 'camcorder']));
-    expect(h.npcs.map((n) => n.id).sort()).toEqual(['ines', 'june', 'marlow', 'tobias']);
+    expect(h.npcs.map((n) => n.id).sort()).toEqual(['hale', 'ines', 'june', 'marlow', 'tobias']);
   });
   it('the player can walk from the tunnel into every door alcove and the outpost (no blocked doorways)', () => {
     const plan = generateHub(3, 6);

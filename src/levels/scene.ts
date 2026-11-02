@@ -4,7 +4,7 @@
  * overlays. One instance per loaded level; `dispose()` frees everything.
  */
 import {
-  AmbientLight, Box3, PointLight, TorusGeometry, PlaneGeometry, BoxGeometry, BufferAttribute, BufferGeometry, Color, CylinderGeometry, FogExp2, Group, InstancedMesh, LineBasicMaterial,
+  AmbientLight, Box3, PointLight, TorusGeometry, PlaneGeometry, CanvasTexture, SRGBColorSpace, BoxGeometry, BufferAttribute, BufferGeometry, Color, CylinderGeometry, FogExp2, Group, InstancedMesh, LineBasicMaterial,
   LineSegments, Matrix4, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, PMREMGenerator, Scene, SpotLight, Vector3, type Material,
 } from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
@@ -51,6 +51,7 @@ export class LevelScene {
   private doorMeshes = new Map<number, Mesh>();
   private propMeshes: InstancedMesh[] = [];
   private waterMeshes: Mesh[] = [];
+  private portraitMeshes: { mesh: Mesh; yaw: number; wrong: boolean }[] = [];
   private fogBase = { color: new Color(), density: 0 };
   private valveMeshes = new Map<string, Mesh>();
   private wpLeds: MeshBasicMaterial[] = [];
@@ -189,6 +190,18 @@ export class LevelScene {
       list.forEach((pr, i) => { this.tmpM.makeScale(pr.w, pr.h, pr.d).setPosition(pr.x, pr.h / 2, pr.z); inst.setMatrixAt(i, this.tmpM); });
       inst.castShadow = true; inst.receiveShadow = true;
       scene.add(inst); this.propMeshes.push(inst);
+    }
+    // gallery portraits: framed canvases; the wrong ones turn to follow you
+    for (const pt of plan.portraits ?? []) {
+      const c = document.createElement('canvas'); c.width = 128; c.height = 160;
+      const g2 = c.getContext('2d')!; g2.fillStyle = '#2a2016'; g2.fillRect(0, 0, 128, 160); g2.fillStyle = '#8a6a3a'; g2.fillRect(6, 6, 116, 148); g2.fillStyle = pt.wrong ? '#201a12' : '#3a2e22'; g2.fillRect(12, 12, 104, 136);
+      g2.fillStyle = '#c8b890'; g2.beginPath(); g2.ellipse(64, 70, 26, 34, 0, 0, 7); g2.fill(); g2.fillStyle = '#101010'; g2.fillRect(48, 62, 10, 6); g2.fillRect(70, 62, 10, 6);
+      if (pt.wrong) { g2.fillStyle = '#f0e8c0'; g2.fillRect(51, 63, 4, 4); g2.fillRect(73, 63, 4, 4); g2.fillStyle = '#101010'; g2.fillRect(50, 88, 28, 3); }
+      const tx = new CanvasTexture(c); tx.colorSpace = SRGBColorSpace;
+      const geo = new PlaneGeometry(0.9, 1.15), mat = new MeshBasicMaterial({ map: tx });
+      const m = new Mesh(geo, mat); m.position.set(pt.x - Math.sin(pt.yaw) * 0.02, 1.7, pt.z - Math.cos(pt.yaw) * 0.02); m.rotation.y = pt.yaw + Math.PI;
+      scene.add(m); this.portraitMeshes.push({ mesh: m, yaw: pt.yaw, wrong: pt.wrong });
+      this.extras.push(geo, mat, tx);
     }
     // water: a translucent surface per flooded room (wade / swim / flooded heights); sludge is murky brown
     const waterGeos: PlaneGeometry[] = [];
@@ -368,9 +381,12 @@ export class LevelScene {
     this.ev.sync(this.sim.ew, this.time, dt);
     this.fx.update(dt, cam, flashOut > 0.4);
     this.hubObj?.update(this.time, p.x, p.z);
+    // blizzard gusts (Arctic) thicken the fog; wrong portraits follow your position with their gaze
+    if (this.plan.cold && this.scene.fog) { const gust = 0.5 + 0.5 * Math.sin(this.time * 0.25) * Math.sin(this.time * 0.11 + 1); (this.scene.fog as FogExp2).density = this.fogBase.density * (1 + gust * 1.6); }
+    for (const pm of this.portraitMeshes) if (pm.wrong) pm.mesh.rotation.y = pm.yaw + Math.PI + Math.max(-0.5, Math.min(0.5, Math.atan2(p.x - pm.mesh.position.x, p.z - pm.mesh.position.z) - pm.yaw)) * 0.4 * Math.sin(this.time * 0.7);
     // underwater: murky blue fog while diving
     const fog = this.scene.fog as FogExp2 | null;
-    if (fog) { const dive = this.sim.player.swim === 'dive'; fog.density += ((dive ? this.fogBase.density * 5 + 0.05 : this.fogBase.density) - fog.density) * Math.min(1, dt * 6); fog.color.lerp(dive ? this.tmpC.setHex(0x0a2a3a) : this.fogBase.color, Math.min(1, dt * 6)); }
+    if (fog && !this.plan.cold) { const dive = this.sim.player.swim === 'dive'; fog.density += ((dive ? this.fogBase.density * 5 + 0.05 : this.fogBase.density) - fog.density) * Math.min(1, dt * 6); fog.color.lerp(dive ? this.tmpC.setHex(0x0a2a3a) : this.fogBase.color, Math.min(1, dt * 6)); }
     for (const [id, w] of this.valveMeshes) w.rotation.z = (this.sim.x.valves.get(id) ?? 0) * (Math.PI / 2);
     const nv = this.sim.cam.nightVision;
     gfx.nightVision = nv; this.ambient.intensity = this.ambientBase * (nv ? 4 : 1);

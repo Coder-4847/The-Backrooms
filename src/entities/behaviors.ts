@@ -8,6 +8,7 @@
  */
 import type { AiContext, Entity, EntityWorld } from './ai';
 import { ACT2 } from './behaviors2';
+import { ACT3 } from './behaviors3';
 
 export type Behavior = (w: EntityWorld, e: Entity, c: AiContext, dt: number) => void;
 const dist = (ax: number, az: number, bx: number, bz: number) => Math.hypot(ax - bx, az - bz);
@@ -189,4 +190,4 @@ const companion: Behavior = (w, e, c, dt) => {
   if (d > 2.6) w.goTo(e, { x: p.x, z: p.z }, d > 8 ? e.def.run : e.def.walk * 1.1, dt, c); else { e.speed = 0; e.yaw = Math.atan2(-(p.x - e.x), -(p.z - e.z)); }
 };
 
-export const BEHAVIORS: Record<string, Behavior> = { howler, coworker, skinstealer, concierge, monitor, companion, ...ACT2 };
+export const BEHAVIORS: Record<string, Behavior> = { howler, coworker, skinstealer, concierge, monitor, companion, ...ACT2, ...ACT3 };

@@ -227,6 +227,15 @@ export function buildBody(defId: string, level: number): Body {
     case 'drowned': return variant(buildHumanoid(level, { height: 1.8, suit: 0x4a5a60, skin: 0x8ea0a4, blink: false }), 1, undefined, 0x0a1418);
     case 'leech': return buildLeech(level);
     case 'static': { const b = variant(buildStick(level), 0.7, 0x0a2a30, 0x0a5a66); const g = b.group; const up = b.update; b.update = (sp, t, dt, tell, seen) => { up(sp, t, dt, tell, seen); g.position.x += (Math.random() - 0.5) * 0.04; g.scale.y = 0.7 * (1 + (Math.random() < 0.08 ? 0.3 : 0)); }; return b; }
+    case 'wraith': return variant(buildStick(level), 0.85, 0x2a3040, 0x101828);
+    case 'partygoer': return buildHumanoid(level, { height: 1.75, suit: 0xc0306a, hat: true, blink: false, skin: 0xe8d8c8 });
+    case 'watcher': return buildHumanoid(level, { height: 1.8, suit: 0xd8d8d0, skin: 0xe8e8e0, blink: false });
+    case 'stalker': return variant(buildStick(level), 1.0, 0xe8f0f8, 0x405060);
+    case 'windowman': return variant(buildStick(level), 0.78, 0x6a7080, 0x101420);
+    case 'echo': return variant(buildHumanoid(level, { height: 1.75, suit: 0x40d8ff, blink: false }), 1, 0x40d8ff, 0x1080a0);
+    case 'curator': return buildHumanoid(level, { height: 2.3, suit: 0x8a6a2a, hat: true, sash: 0x401010, blink: false, skin: 0xc8b890 });
+    case 'pursuer': { const b = variant(buildHowler(level), 2.6, 0x3a0e0e, 0x300606); return b; }
+    case 'architect': return buildHumanoid(level, { height: 2.4, suit: 0xe8e0c8, skin: 0xf0ead8, blink: false, wide: true });
     case 'faceling': return buildHumanoid(level, { height: 1.7, suit: 0xa8602a, blink: false, lantern: true });
     default: return buildStick(level);
   }

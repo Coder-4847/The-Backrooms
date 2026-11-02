@@ -9,7 +9,7 @@ import { STEP } from '../core/loop';
 import type { LevelPlan, Vec2 } from '../gen/types';
 import type { DifficultyId } from '../core/difficulty';
 
-interface Step { to: Vec2; /** interact when arrived (door/key/exit) */ act?: boolean; /** set a puzzle valve to its solution when arrived */ valve?: { puzzle: string; part: string; target: number }; /** press a sequence server / breaker */ press?: { type: 'seq' | 'breaker'; puzzle: string; part: string } }
+interface Step { to: Vec2; /** door connection to unlock directly */ door?: number; /** interact when arrived (door/key/exit) */ act?: boolean; /** set a puzzle valve to its solution when arrived */ valve?: { puzzle: string; part: string; target: number }; /** press a sequence server / breaker */ press?: { type: 'seq' | 'breaker'; puzzle: string; part: string } }
 
 
 /** Dijkstra over the nav graph avoiding still-locked doors. Returns node ids. */
@@ -40,19 +40,21 @@ function route(plan: LevelPlan, from: Vec2, to: Vec2, openLocks: Set<string>, is
   // door nodes of still-closed locked doors need an interaction (nav mouths already make the approach perpendicular)
   const path: Step[] = nodes.map((n) => {
     const conn = N[n].kind === 'door' ? plan.connections[N[n].connection!] : null;
-    return { to: N[n].pos, act: !!(conn?.lock && !isOpen(conn.id)) };
+    const closed = !!(conn?.lock && !isOpen(conn.id));
+    return { to: N[n].pos, act: closed, door: closed ? conn!.id : undefined };
   });
   return [...path.slice(1), { to }];
 }
 
 export interface BotResult { completed: boolean; seconds: number; reason?: string; keysUsed: number; waypointsVisited: number }
 
-export function runBot(plan: LevelPlan, opts: { difficulty?: DifficultyId; maxSeconds?: number; visitWaypoints?: boolean; /** entities observe only (default) or act */ mode?: 'active' | 'observe' } = {}): BotResult {
+export function runBot(plan: LevelPlan, opts: { difficulty?: DifficultyId; maxSeconds?: number; visitWaypoints?: boolean; /** entities observe only (default) or act */ mode?: 'active' | 'observe'; /** god mode (default true: the bot proves reachability) */ god?: boolean; /** sprint in bursts while stamina allows (fairness runs) */ sprint?: boolean } = {}): BotResult {
   const sim = new LevelSim(plan, opts.difficulty ?? 'normal', { mode: opts.mode ?? 'observe' });
   const frame = emptyFrame();
   const maxSteps = Math.round((opts.maxSeconds ?? 2400) / STEP);
   const p = sim.player;
-  p.god = true; // the bot proves reachability: water, darkness and entities must not end the run
+  p.god = opts.god ?? true; // the bot proves reachability: water, darkness and entities must not end the run
+  let sprinting = false;
   let queue: Step[] = [];
   let stuck = 0;
   let last = { x: p.x, z: p.z };
@@ -101,6 +103,9 @@ export function runBot(plan: LevelPlan, opts: { difficulty?: DifficultyId; maxSe
   };
 
   for (let s = 0; s < maxSteps; s++) {
+    if (sim.dead) return { completed: false, seconds: sim.time, reason: 'died', keysUsed: sim.keys.size, waypointsVisited: sim.activatedWaypoints.size };
+    // the Finale has no exit: the run ends at the Architect's table
+    if (plan.finale && Math.hypot(p.x - plan.exit.pos.x, p.z - plan.exit.pos.z) < 2.6) return { completed: true, seconds: sim.time, keysUsed: sim.keys.size, waypointsVisited: sim.activatedWaypoints.size };
     if (sim.finished) return { completed: true, seconds: sim.time, keysUsed: sim.keys.size, waypointsVisited: sim.activatedWaypoints.size };
     if (!queue.length) {
       queue = plan2();
@@ -117,6 +122,7 @@ export function runBot(plan: LevelPlan, opts: { difficulty?: DifficultyId; maxSe
         for (let k = 0; k < 4 && sim.x.valves.get(v.part) !== v.target; k++) sim.x.handle({ type: 'valve', puzzle: v.puzzle, part: v.part });
         queue.shift(); continue;
       }
+      if (tgt.door !== undefined) { const d = sim.doors.get(tgt.door); if (d) sim.openDoor(d); queue.shift(); continue; }
       if (tgt.act) {
         frame.pressed.Interact = true;
         sim.step(frame); frame.pressed.Interact = false;
@@ -129,7 +135,7 @@ export function runBot(plan: LevelPlan, opts: { difficulty?: DifficultyId; maxSe
     // steer: face the target and walk forward (bot may set yaw directly)
     p.yaw = Math.atan2(-dx, -dz);
     frame.moveX = 0; frame.moveY = 1;
-    frame.down.Sprint = false;
+    if (opts.sprint) { if (p.stamina < 6) sprinting = false; else if (p.stamina > 40) sprinting = true; frame.down.Sprint = sprinting; } else frame.down.Sprint = false;
     sim.step(frame);
     // stuck detection: if we barely moved for 3 s, replan
     if (s % 180 === 0) {

@@ -14,7 +14,8 @@ import { DIFFICULTIES, type DifficultyId } from './difficulty';
 import { Rng, deriveSeed, parseSeed, randomSeedString } from '../gen/rng';
 import { bus } from './events';
 import { h } from '../ui/dom';
-import { craftPanel, dialoguePanel, doorPanel, infoPanel, inventoryPanel, journalPanel, notePanel, stashPanel, talkPanel } from '../ui/panels';
+import { BASE_STATE, ENDING_TEXT, resolveEnding, type EndingState } from '../story/endings';
+import { craftPanel, dialoguePanel, finalePanel, doorPanel, infoPanel, inventoryPanel, journalPanel, notePanel, stashPanel, talkPanel } from '../ui/panels';
 import { NOTES } from '../story/notes';
 import type { HubRef, HubState } from '../levels/hubObjects';
 import type { SimSnapshot } from '../levels/sim';
@@ -232,11 +233,33 @@ export class Flow {
     return out;
   }
 
+  /** The Finale (spec 8.6): the Architect's choice + the run's state go through the ending resolver. */
+  async finishGame(patch: Partial<EndingState>): Promise<void> {
+    const g = this.g, L = g.level, slot = this.slot;
+    if (!L) return;
+    const state: EndingState = { ...BASE_STATE, hasExitKey: L.sim.keys.size > 0 || L.sim.inv.has('key1'), sanity: L.sim.stats.sanity, companionAlive: !!(slot?.npcs.companion as { present?: boolean } | undefined)?.present, anchorsFound: Number(slot?.flags.anchors) || 0, secretSequence: !!slot?.flags.secret, ...patch };
+    const id = resolveEnding(state);
+    const t = ENDING_TEXT[id];
+    if (!g.profile.endings.includes(id)) g.profile.endings.push(id);
+    await g.saves.saveProfile(g.profile);
+    if (g.soundBank && g.audioEngine) g.soundBank.ending(g.audioEngine.flat('music', 0.4), id === 'loop' || id === 'join');
+    const done = () => { g.ui.closePanel(); void (async () => {
+      if (slot) {
+        if (id === 'loop') { slot.frontier = 0; slot.completed = {}; slot.checkpoint = null; slot.runSeed = String(Math.floor(Math.random() * 1e9)); slot.flags.loops = (Number(slot.flags.loops) || 0) + 1; }
+        else { slot.flags.ending = id; slot.checkpoint = null; }
+        await g.saves.saveSlot(slot);
+      }
+      g.currentSlot = null; await g.showMenu();
+    })(); };
+    g.ui.openPanel(h('div', { class: 'screen center panel' }, h('h2', {}, t.title), h('p', { class: 'note-text paper' }, t.text), h('p', { class: 'muted' }, `Ending ${g.profile.endings.length} of 6 seen.`), h('button', { class: 'btn primary', onclick: done }, 'Continue')));
+  }
+
   // ---- hub interactions ----
 
   private custom(ref: HubRef): void {
     const g = this.g, ui = g.ui, close = () => ui.closePanel();
     if (!g.level) return;
+    if ((ref as { type: string }).type === 'architect') { ui.openPanel(finalePanel(g, close)); return; }
     if (ref.type === 'door') ui.openPanel(doorPanel(g, ref.index, this.hubState(), close));
     else if (ref.type === 'npc') ui.openPanel(dialoguePanel(g, ref.id, close));
     else switch (ref.kind) {
