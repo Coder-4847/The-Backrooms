@@ -22,6 +22,8 @@ export class SimExtras {
   companionLost = false;
   violations = 0;
   gaze = 0;
+  /** Secret (Level 0): crouch, lights off, hold your breath in the first room for 20 s. Never hinted in any menu. */
+  secretT = 0; secretDone = false; secretFired = false;
   passHeld: 'none' | 'real' | 'forged' = 'none';
 
   constructor(private sim: LevelSim) {
@@ -34,6 +36,11 @@ export class SimExtras {
     this.radioCooldown = Math.max(0, this.radioCooldown - dt);
     this.passHeld = s.inv.has('hall_pass') ? 'real' : s.inv.has('forged_pass') ? 'forged' : 'none';
     if (f.pressed.Throw) this.throwItem();
+    if (!this.secretDone && s.plan.levelId === 'level0') {
+      const ok = s.room === s.plan.spawn.room && p.crouching && f.down.HoldBreath && !(s.flash.on && s.inv.has('flashlight')) && p.speed < 0.15;
+      this.secretT = ok ? this.secretT + dt : 0;
+      if (this.secretT >= 20) this.secretDone = true;
+    }
     // tripline: clatters (loud noise) when anything non-friendly crosses it
     for (const t of [...this.triplines]) {
       const hit = s.ew.entities.find((e) => e.def.id !== 'companion' && e.def.id !== 'coworker' && Math.hypot(e.x - t.x, e.z - t.z) < 1.1);

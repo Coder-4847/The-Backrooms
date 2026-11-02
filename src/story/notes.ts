@@ -81,9 +81,17 @@ export const NOTES: Record<string, NoteDef> = Object.fromEntries([
   N({ id: 'ch_note', level: 'chase', title: "Torn page", kind: 'note', text: "It is slower than a sprint. It is faster than a walk. Alternate. It cannot enter where the camera blinks." }),
   N({ id: 'fn_arch', level: 'finale', title: "Architect's card", kind: 'note', text: "You have read my drawings. You know the doors. I built one more than I needed. Come and sit." }),
   N({ id: 'fn_seat', level: 'finale', title: "Chair, taped", kind: 'note', text: "The seventh chair. The one nobody moved. It was always yours." }),
+  N({ id: 'anchor_hint1', level: 'level0', title: "Pim's second drawing", kind: 'graffiti', text: "(a drawing of a small cap on a floor, in a room that goes nowhere. An arrow points away from the exit.)" }),
+  N({ id: 'anchor_hint2', level: 'level2', title: "Scratched into a pipe", kind: 'graffiti', text: "A SMALL THING IS KEPT AT THE END OF A TUNNEL THAT LEADS NOWHERE. THE VALVES DON'T WANT IT TO BE FOUND." }),
+  N({ id: 'anchor_hint3', level: 'level37', title: "Lifeguard's logbook", kind: 'note', text: "Something small glints at the end of the pool that nobody swims to. I did not go. If you go, hold your breath and do not splash." }),
+  N({ id: 'anchor_hint4', level: 'level94', title: "Mirror note", kind: 'note', text: "In the one room your echo never reaches, there is a photograph face-down. Turn it over only once you are ready." }),
+  N({ id: 'anchor_hint5', level: 'wheatfield', title: "Carved into a fence post", kind: 'graffiti', text: "WALK TO THE EDGE OF THE FIELD WHERE THE WHEAT STOPS. THERE IS A CHAIR LEG THERE. IT IS NOT FOR SITTING." }),
+  N({ id: 'l0_secret', level: 'level0', title: "Under the first note, in pencil", kind: 'graffiti', text: "(very small) If you ever need the hum to forget you: sit in the first room, lights off, crouched, and hold your breath until it skips." }),
+  N({ id: 'fn_anchors', level: 'finale', title: "Architect's second card", kind: 'note', text: "If you have collected five small things that were never mine, lay them on my table. They are the only part of this place I did not draw." }),
   N({ id: 'hub_board1', level: 'hub', title: 'Notice board: supply policy', kind: 'poster', text: 'ALMOND OUTPOST SUPPLY POLICY\nTake what you need. Leave what you do not. If you find a battery, you did not find it; the Outpost did.\n— M.V.' }),
   N({ id: 'hub_board2', level: 'hub', title: 'Notice board: Ines', kind: 'poster', text: 'The radio picks up a rhythm every eleven minutes. If anyone hears it in person, tell me before you tell anyone else.' }),
   N({ id: 'hub_tape', level: 'hub', title: 'Tape 00, unlabeled', kind: 'tape', text: '[static] ...whoever carries this camera, we left the seventh chair empty on purpose. Please sit down when you are ready. [static]' }),
 ]);
 
-export const LEVEL_NOTES = (level: string): NoteDef[] => Object.values(NOTES).filter((n) => n.level === level);
+/** Notes scattered randomly by level dressing (the Anchor hints and the secret hint are placed deliberately instead). */
+export const LEVEL_NOTES = (level: string): NoteDef[] => Object.values(NOTES).filter((n) => n.level === level && !n.id.startsWith('anchor_hint') && n.id !== 'l0_secret');

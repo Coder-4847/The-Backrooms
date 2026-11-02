@@ -15,7 +15,9 @@ import { Rng, deriveSeed, parseSeed, randomSeedString } from '../gen/rng';
 import { bus } from './events';
 import { h } from '../ui/dom';
 import { BASE_STATE, ENDING_TEXT, resolveEnding, type EndingState } from '../story/endings';
-import { craftPanel, dialoguePanel, finalePanel, doorPanel, infoPanel, inventoryPanel, journalPanel, notePanel, stashPanel, talkPanel } from '../ui/panels';
+import { checkAchievements, unlocksFor } from '../story/achievements';
+import { bestiaryPanel, camcorderPanel, endingGalleryPanel } from '../ui/panels2';
+import { craftPanel, dialoguePanel, finalePanel, doorPanel, inventoryPanel, journalPanel, notePanel, stashPanel, talkPanel } from '../ui/panels';
 import { NOTES } from '../story/notes';
 import type { HubRef, HubState } from '../levels/hubObjects';
 import type { SimSnapshot } from '../levels/sim';
@@ -43,9 +45,11 @@ export class Flow {
 
   // ---- new / resume ----
 
-  async newGame(slotNo: number, difficulty: DifficultyId, seedText: string): Promise<void> {
-    const seed = seedText.trim() || randomSeedString();
+  async newGame(slotNo: number, difficulty: DifficultyId, seedText: string, opts: { speedrun?: boolean; ngPlus?: boolean } = {}): Promise<void> {
+    const seed = opts.speedrun ? 'SPEEDRUN-1' : seedText.trim() || randomSeedString();
     const slot = newSlot(slotNo, difficulty, seed);
+    if (opts.speedrun) slot.flags.speedrun = true;
+    if (opts.ngPlus) slot.flags.ngplus = true;
     slot.inventory = Inventory.starter().toState();
     this.g.currentSlot = slot;
     await this.g.saves.saveSlot(slot);
@@ -107,7 +111,7 @@ export class Flow {
     const deaths = o.deaths ?? 0;
     const scene = new LevelScene(g, def, deriveSeed(seed, `level:${id}`), difficulty, undefined, {
       snapshot: o.snapshot,
-      sim: { inventory: inv, stats: o.stats ?? new Stats(), seed: deriveSeed(seed, `level:${id}`) + deaths * 7919, hungerEnabled: g.settings.value.hunger },
+      sim: { inventory: inv, stats: o.stats ?? new Stats(), seed: deriveSeed(seed, `level:${id}`) + deaths * 7919, hungerEnabled: g.settings.value.hunger, ngPlus: !!this.slot?.flags.ngplus },
     });
     await scene.load((p, label) => g.ui.setLoading(true, def.name, p, label));
     scene.sim.deaths = deaths;
@@ -132,6 +136,18 @@ export class Flow {
       if (b.discovered === 1) { b.learned.push(lines[e.entity.def.id] ?? 'Something stirs.'); void this.g.saves.saveProfile(this.g.profile); }
     });
     scene.sim.listeners.push((e) => { if (e.type === 'talk') this.g.ui.openPanel(talkPanel(this.g, e.id, () => this.g.ui.closePanel())); else if (e.type === 'companion' && e.what === 'lost' && this.slot) this.slot.npcs.companion = { present: false, lost: true, hp: 0 }; else if (e.type === 'companion' && e.what === 'recruited' && this.slot) this.slot.npcs.companion = { present: true, hp: 100 }; });
+    scene.sim.listeners.push((e) => {
+      const slot = this.slot, campaign = this.run?.mode !== 'replay';
+      if (e.type === 'pickup' && e.item.item.startsWith('anchor') && slot && campaign) {
+        slot.flags[`anchor:${e.item.item}`] = true;
+        slot.flags.anchors = ['1', '2', '3', '4', '5'].filter((n) => slot.flags[`anchor:anchor${n}`]).length;
+        this.g.ui.toast(`An Anchor (${slot.flags.anchors}/5). The room feels briefly solid.`); this.award();
+      } else if (e.type === 'secret' && slot && campaign) { slot.flags.secret = true; this.g.ui.toast('The hum skips a beat.'); this.award(); }
+      else if (e.type === 'tell') this.hint('tell', 'Something is warning you. Break line of sight, stay quiet, and read its tell.');
+      else if (e.type === 'splash') this.hint('water', 'Water: crouch to dive and stay quiet. Surface to breathe. Splashing is loud.');
+      else if (e.type === 'hide' && e.on) this.hint('hide', 'Hiding: stay quiet. Hounds can smell you if they are close.');
+    });
+    this.hintsAtStart(scene);
     scene.onNote = (id) => this.foundNote(id);
     scene.onCustom = (ref) => this.custom(ref as HubRef);
   }
@@ -144,6 +160,27 @@ export class Flow {
     if (s && !s.notesFound.includes(id)) s.notesFound.push(id);
     if (!this.g.profile.journal.includes(id)) { this.g.profile.journal.push(id); void this.g.saves.saveProfile(this.g.profile); }
     this.g.ui.openPanel(notePanel(id, () => this.g.ui.closePanel()));
+  }
+
+  /** One-time contextual hints (subtle tutorial). Shown once per profile. */
+  hint(id: string, text: string): void {
+    const c = (this.g.profile.counters ??= {});
+    if (c[`hint:${id}`]) return;
+    c[`hint:${id}`] = 1; this.g.ui.toast(text);
+  }
+
+  private hintsAtStart(scene: LevelScene): void {
+    if (this.inHub) return;
+    const touch = this.g.input.device === 'touch', pad = this.g.input.device === 'gamepad';
+    this.hint('move', touch ? 'Left thumb moves, right thumb looks. Buttons appear when something is near.' : pad ? 'Left stick moves, right stick looks. A interacts, Y toggles the flashlight.' : 'WASD to move, mouse to look. G flashlight, E interact, Shift sprint, C crouch.');
+    setTimeout(() => { if (scene.sim.flash.battery < 100) this.hint('battery', 'The flashlight drains. Wiggle the mouse (or shake) when it is low, and pick up batteries.'); }, 120000);
+  }
+
+  /** Evaluate achievements and toast anything new. */
+  award(): void {
+    const fresh = checkAchievements(this.g.profile, this.slot);
+    for (const a of fresh) this.g.ui.toast(`Achievement: ${a.name}`);
+    if (fresh.length) void this.g.saves.saveProfile(this.g.profile);
   }
 
   async checkpoint(index: number): Promise<void> {
@@ -208,6 +245,7 @@ export class Flow {
       if (!p.bestTimes[r.levelId] || time < p.bestTimes[r.levelId]) p.bestTimes[r.levelId] = time;
       const done = (p.completedOn[r.levelId] ??= []); if (!done.includes(r.difficulty)) done.push(r.difficulty);
       slot.playtime += time;
+      this.award();
       await g.saves.saveProfile(p);
       await g.saves.saveSlot(slot);
     }
@@ -240,7 +278,16 @@ export class Flow {
     const state: EndingState = { ...BASE_STATE, hasExitKey: L.sim.keys.size > 0 || L.sim.inv.has('key1'), sanity: L.sim.stats.sanity, companionAlive: !!(slot?.npcs.companion as { present?: boolean } | undefined)?.present, anchorsFound: Number(slot?.flags.anchors) || 0, secretSequence: !!slot?.flags.secret, ...patch };
     const id = resolveEnding(state);
     const t = ENDING_TEXT[id];
-    if (!g.profile.endings.includes(id)) g.profile.endings.push(id);
+    const first = !g.profile.endings.includes(id);
+    if (first) g.profile.endings.push(id);
+    const diff = slot?.difficulty ?? 'normal';
+    const u = unlocksFor(id, diff, g.profile);
+    for (const c of u.cosmetics) if (!g.profile.cosmetics.includes(c)) g.profile.cosmetics.push(c);
+    for (const tt of u.titles) if (!g.profile.titles.includes(tt)) g.profile.titles.push(tt);
+    if (id !== 'loop' && !g.profile.ngPlus.includes('unlocked')) g.profile.ngPlus.push('unlocked');
+    (g.profile.completedOn.finale ??= []); if (!g.profile.completedOn.finale.includes(diff)) g.profile.completedOn.finale.push(diff);
+    if (slot?.flags.speedrun) { const total = slot.playtime + L.sim.time; const k = `speedrun:${id}`; if (!g.profile.bestTimes[k] || total < g.profile.bestTimes[k]) g.profile.bestTimes[k] = total; }
+    this.award();
     await g.saves.saveProfile(g.profile);
     if (g.soundBank && g.audioEngine) g.soundBank.ending(g.audioEngine.flat('music', 0.4), id === 'loop' || id === 'join');
     const done = () => { g.ui.closePanel(); void (async () => {
@@ -251,7 +298,7 @@ export class Flow {
       }
       g.currentSlot = null; await g.showMenu();
     })(); };
-    g.ui.openPanel(h('div', { class: 'screen center panel' }, h('h2', {}, t.title), h('p', { class: 'note-text paper' }, t.text), h('p', { class: 'muted' }, `Ending ${g.profile.endings.length} of 6 seen.`), h('button', { class: 'btn primary', onclick: done }, 'Continue')));
+    g.ui.openPanel(h('div', { class: 'screen center panel' }, h('h2', {}, t.title), h('p', { class: 'note-text paper' }, t.text), h('p', { class: 'muted' }, `Ending ${g.profile.endings.length} of 6 seen.${g.profile.ngPlus.includes('unlocked') ? ' New Game+ is unlocked.' : ''}${u.titles.length ? ` Title: ${u.titles[u.titles.length - 1]}.` : ''}${slot?.flags.speedrun ? ` Run time ${Math.floor((slot.playtime + L.sim.time) / 60)}:${String(Math.floor((slot.playtime + L.sim.time) % 60)).padStart(2, '0')}.` : ''}`), h('button', { class: 'btn primary', onclick: done }, 'Continue')));
   }
 
   // ---- hub interactions ----
@@ -265,9 +312,9 @@ export class Flow {
     else switch (ref.kind) {
       case 'stash': ui.openPanel(stashPanel(g, close)); break;
       case 'noteboard': { for (const n of ['hub_board1', 'hub_board2']) this.foundNoteQuiet(n); ui.openPanel(h('div', { class: 'screen center panel' }, h('h2', {}, 'Notice board'), h('p', { class: 'note-text paper' }, `${NOTES.hub_board1.text}\n\n${NOTES.hub_board2.text}`), h('button', { class: 'btn', onclick: close }, 'Close'))); break; }
-      case 'bestiary': ui.openPanel(infoPanel('Bestiary wall', this.bestiaryText(), close)); break;
-      case 'gallery': ui.openPanel(infoPanel('Ending gallery', 'Six endings. None unlocked yet. The door is locked from the other side. (Endings arrive in Phase 5.)', close)); break;
-      case 'camcorder': ui.openPanel(infoPanel('Camcorder station', 'Lens covers, tape stock, a different strap. Customization unlocks later.', close)); break;
+      case 'bestiary': ui.openPanel(bestiaryPanel(g, close)); break;
+      case 'gallery': ui.openPanel(endingGalleryPanel(g, close)); break;
+      case 'camcorder': ui.openPanel(camcorderPanel(g, close)); break;
       case 'kitchen': ui.openPanel(craftPanel(g, true, close)); break;
       case 'crafting': ui.openPanel(craftPanel(g, false, close)); break;
     }
@@ -276,12 +323,6 @@ export class Flow {
   private foundNoteQuiet(id: string): void {
     const s = this.slot; if (s && !s.notesFound.includes(id)) s.notesFound.push(id);
     if (!this.g.profile.journal.includes(id)) this.g.profile.journal.push(id);
-  }
-
-  private bestiaryText(): string {
-    const b = this.g.profile.bestiary;
-    const lines = Object.entries(b).map(([id, e]) => `${id}: seen ${e.discovered}×`);
-    return lines.length ? lines.join('\n') : 'Nothing catalogued yet. Entities you encounter are recorded here with what you learned about them.';
   }
 
   openInventory(): void { const g = this.g; if (g.level) g.ui.openPanel(inventoryPanel(g, () => g.ui.closePanel())); }

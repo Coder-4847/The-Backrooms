@@ -15,6 +15,8 @@
     "perf": "tsx tools/perf.ts",
     "shots": "tsx tools/shots.ts",
     "smoke": "tsx tools/smoke.ts",
+    "mobile": "tsx tools/mobile.ts",
+    "balance": "tsx tools/balance.ts",
     "verify": "npm run typecheck && npm run lint && npm run test && npm run validate:levels"
   },
   "dependencies": {

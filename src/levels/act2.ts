@@ -54,7 +54,7 @@ const garage: LevelSpec = {
 
 // ---- Level 37: Poolrooms (chill) ----
 const level37: LevelSpec = {
-  id: 'level37', name: 'Level 37: Poolrooms', act: 2, tier: 'chill', door: { color: '#6ad8d0', icon: '37' }, intensity: 0.12, targetSeconds: [90, 2400],
+  id: 'level37', name: 'Level 37: Poolrooms', anchor: 3, act: 2, tier: 'chill', door: { color: '#6ad8d0', icon: '37' }, intensity: 0.12, targetSeconds: [90, 2400],
   look: look({ walls: [['tile', 1], ['tile', 1], ['tile', 0], ['tile', 1]], floor: ['tile', 1], ceiling: ['ceiling', 0], trim: ['tile', 0], fogColor: 0x0a2a2c, fogDensity: 0.02, ambient: 0x5ac0c0, ambientIntensity: 0.7, lampColor: 0xc8ffff, grade: { tint: [0.9, 1.08, 1.1], saturation: 1.1, contrast: 1.02 }, dust: 0xb0f0f0 }),
   graph: { width: 100, depth: 80, rooms: 26, minRoom: 10, maxRoom: 22, wallHeight: 4, locks: 1, lockStyles: ['key'], loops: 0.4, variants: 4, nests: 1, loot: 24, lootTable: [['almond_water', 4], ['battery', 2], ['bandage', 2], ['cracker', 2]] },
   water: { wade: 0.25, swim: 0.35, flooded: 0.4 },

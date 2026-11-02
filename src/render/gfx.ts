@@ -126,12 +126,26 @@ export class Gfx {
   }
 
   /** Use the scene's look (fog, tint) for post uniforms. */
+  private lens = { tint: [1, 1, 1] as [number, number, number], sat: 1 };
+  private lookGrade: LevelLook['grade'] | null = null;
+  /** Cosmetic camcorder lens (unlocked by endings): multiplies the level's colour grade. */
+  setLens(tint: [number, number, number], sat: number): void { this.lens = { tint, sat }; if (this.lookGrade) this.applyGrade(this.lookGrade); }
+  private applyGrade(g: LevelLook['grade']): void {
+    const u = this.vhs?.u;
+    if (!u) return;
+    u.uTint.value.set(g.tint[0] * this.lens.tint[0], g.tint[1] * this.lens.tint[1], g.tint[2] * this.lens.tint[2]);
+    u.uSat.value = g.saturation * this.lens.sat;
+    u.uContrast.value = g.contrast;
+  }
+
   applyLook(look: LevelLook): void {
+    this.lookGrade = look.grade;
     const u = this.vhs?.u;
     if (!u) return;
     u.uTint.value.set(...look.grade.tint);
     u.uSat.value = look.grade.saturation;
     u.uContrast.value = look.grade.contrast;
+    this.applyGrade(look.grade);
   }
 
   setScene(scene: Scene): void {

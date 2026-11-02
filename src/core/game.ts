@@ -23,6 +23,7 @@ import { runPerf } from './perf';
 import { debugEnabled, CommandRegistry } from './debug';
 import { Ui } from '../ui/ui';
 import { Flow } from './flow';
+import { lensById } from '../ui/panels2';
 import type { Services } from './services';
 
 const GRAPHICS_KEYS = new Set(['tier', 'resolutionScale', 'fov', 'drawDistance', 'shadowQuality', 'antialias', 'bloom', 'ssao', 'vhs', 'grain', 'dust', 'batterySaver']);
@@ -178,7 +179,7 @@ export class Game implements Services {
     this.currentSlot = slot;
     return this.flow.startLevel(id, seedText, difficulty, { mode: 'campaign' });
   }
-  newGame(slotNo: number, difficulty: DifficultyId, seedText: string): Promise<void> { return this.flow.newGame(slotNo, difficulty, seedText); }
+  newGame(slotNo: number, difficulty: DifficultyId, seedText: string, opts: { speedrun?: boolean; ngPlus?: boolean } = {}): Promise<void> { return this.flow.newGame(slotNo, difficulty, seedText, opts); }
   resumeSlot(slot: SlotData): Promise<void> { return this.flow.resume(slot); }
   startFromHub(index: number, o: Parameters<Flow['startFromHub']>[1]): Promise<void> { return this.flow.startFromHub(index, o); }
   knownNotes(): string[] { return this.flow.knownNotes(); }
@@ -193,12 +194,22 @@ export class Game implements Services {
 
   finishLoad(scene: LevelScene): void {
     this.level = scene;
+    this.applyLens();
     this.runStart = performance.now();
     this.ui.setLoading(false);
     this.state = 'playing';
     this.input.setGameplayActive(true);
     this.input.requestLock();
     this.ui.showHud(true);
+  }
+
+  /** Equip the chosen camcorder lens if it is unlocked (falls back to standard). */
+  applyLens(): void {
+    const id = this.settings.value.lens;
+    const l = lensById(id);
+    const ok = id === 'standard' || this.profile.cosmetics.includes(`lens:${id}`);
+    const lens = ok ? l : lensById('standard');
+    this.gfx.setLens(lens.tint, lens.sat);
   }
 
   /** Small JPEG of the current view for the save slot card. */

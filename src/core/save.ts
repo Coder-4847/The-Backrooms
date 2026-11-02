@@ -55,6 +55,8 @@ export interface Profile {
   achievements: string[];
   ngPlus: string[];
   firstLaunchAck: boolean;
+  /** Misc counters (crafts, hints shown, ...). Optional so old profiles load. */
+  counters?: Record<string, number>;
   lastBenchmarkTier: string | null;
 }
 

@@ -178,7 +178,7 @@ export function craftPanel(game: Game, kitchen: boolean, close: () => void): HTM
       const ok = canCraft(inv, r, kitchen);
       const needs = Object.entries(r.in).map(([id, n]) => `${itemDef(id).name} ×${n}${inv.count(id) >= n ? '' : ' (missing)'}`).join(', ');
       list.append(h('div', { class: 'row' }, h('div', { class: 'row-label' }, r.name, h('small', {}, `${needs}${r.station ? ' · kitchen' : ''}`), h('small', {}, r.hint)),
-        h('button', { class: 'btn small' + (ok ? ' primary' : ''), disabled: !ok, onclick: () => { if (craft(inv, r, kitchen)) { flags[`recipe:${r.id}`] = true; game.level!.sim.emit({ type: 'use', item: r.id }); game.ui.toast(`Made: ${r.name}`); } else game.ui.toast('Not enough room', 'warn'); paint(); } }, 'Make')));
+        h('button', { class: 'btn small' + (ok ? ' primary' : ''), disabled: !ok, onclick: () => { if (craft(inv, r, kitchen)) { flags[`recipe:${r.id}`] = true; const cn = (game.profile.counters ??= {}); cn.crafted = (cn.crafted ?? 0) + 1; game.flow.award(); game.level!.sim.emit({ type: 'use', item: r.id }); game.ui.toast(`Made: ${r.name}`); } else game.ui.toast('Not enough room', 'warn'); paint(); } }, 'Make')));
     }
   };
   paint();

@@ -50,7 +50,7 @@ const suburbs: LevelSpec = {
 };
 
 const wheatfield: LevelSpec = {
-  id: 'wheatfield', name: 'Wheat Field', act: 3, tier: 'uneasy', door: { color: '#d8c060', icon: 'W' }, intensity: 0.15, targetSeconds: [90, 2400],
+  id: 'wheatfield', name: 'Wheat Field', anchor: 5, act: 3, tier: 'uneasy', door: { color: '#d8c060', icon: 'W' }, intensity: 0.15, targetSeconds: [90, 2400],
   look: look({ walls: [['wallpaper', 0], ['wallpaper', 0], ['concrete', 0], ['concrete', 0]], floor: ['carpet', 0], ceiling: ['ceiling', 0], trim: ['concrete', 0], fogColor: 0x6a5a30, fogDensity: 0.012, ambient: 0xd8c080, ambientIntensity: 0.8, lampColor: 0xfff0c0, grade: { tint: [1.12, 1.0, 0.8], saturation: 1.1, contrast: 1.0 }, dust: 0xf0d890 }),
   graph: { width: 220, depth: 200, rooms: 18, minRoom: 30, maxRoom: 80, wallHeight: 3, locks: 0, loops: 0.2, variants: 2, nests: 0, loot: 10 },
   open: 1,
@@ -79,7 +79,7 @@ const city: LevelSpec = {
 };
 
 const level94: LevelSpec = {
-  id: 'level94', name: 'Level 94: Motion', act: 3, tier: 'tense', door: { color: '#b0b0c0', icon: '94' }, intensity: 0.5, targetSeconds: [90, 2400],
+  id: 'level94', name: 'Level 94: Motion', anchor: 4, act: 3, tier: 'tense', door: { color: '#b0b0c0', icon: '94' }, intensity: 0.5, targetSeconds: [90, 2400],
   look: look({ walls: [['metal', 0], ['tile', 0], ['metal', 0], ['tile', 1]], floor: ['tile', 0], ceiling: ['metal', 0], trim: ['metal', 0], fogColor: 0x0c0e14, fogDensity: 0.025, ambient: 0x384050, ambientIntensity: 0.55, lampColor: 0xe8f0ff, grade: { tint: [0.95, 1.0, 1.1], saturation: 0.8, contrast: 1.15 }, dust: 0xd0d8e8 }),
   graph: { width: 100, depth: 80, rooms: 24, minRoom: 10, maxRoom: 22, wallHeight: 3.4, locks: 1, lockStyles: ['key'], loops: 0.5, variants: 4, nests: 0, loot: 24 },
   props: [{ kind: 'pillar', w: 0.8, d: 0.8, h: 3.4, color: 0x8a90a0, count: 14 }],

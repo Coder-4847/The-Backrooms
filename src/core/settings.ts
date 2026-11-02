@@ -24,6 +24,7 @@ export interface Settings {
   // gameplay
   difficulty: DifficultyId; scare: ScareIntensity; hunger: boolean; autosave: boolean;
   // accessibility
+  lens: string;
   subtitles: boolean; reduceFlicker: boolean; reduceJumpscares: boolean; reduceShake: boolean;
   colorblind: 'off' | 'protanopia' | 'deuteranopia' | 'tritanopia'; textSize: number; highContrast: boolean;
 }
@@ -86,6 +87,7 @@ export const SCHEMA: SettingDef[] = [
   tog('hunger', 'Hunger and thirst', 'Gameplay', true, 'Off in Easy regardless.'),
   tog('autosave', 'Autosave', 'Gameplay', true),
 
+  sel('lens', 'Camcorder lens', 'Gameplay', 'standard', opts('standard', 'amber', 'mono', 'gold'), 'Unlocked by finishing the game; locked lenses fall back to standard.'),
   tog('subtitles', 'Captions for sounds', 'Accessibility', true),
   tog('reduceFlicker', 'Reduce flicker and strobe', 'Accessibility', false),
   tog('reduceJumpscares', 'Reduce jump scares', 'Accessibility', false),

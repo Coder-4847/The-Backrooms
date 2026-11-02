@@ -9,6 +9,7 @@ import { DIFFICULTIES, DIFFICULTY_ORDER, type DifficultyId } from '../core/diffi
 import { SLOT_COUNT, type SlotData } from '../core/save';
 import { debugEnabled } from '../core/debug';
 import { randomSeedString } from '../gen/rng';
+import { achievementsPanel, bestiaryPanel, creditsPanel, endingGalleryPanel, howToPlayPanel } from './panels2';
 import { glyphFor } from '../core/input/actions';
 import { itemDef } from '../systems/items';
 import type { Settings } from '../core/settings';
@@ -135,15 +136,18 @@ export class Ui {
     void g.saves.listSlots().then((s) => { this.slotsCache = s; });
     const menu = h('div', { class: 'screen title' },
       h('h1', { class: 'logo' }, 'NOCLIP'),
-      h('p', { class: 'tag' }, 'found footage. do not stop recording.'),
+      h('p', { class: 'tag' }, this.game.profile.titles.length ? `found footage. do not stop recording. · ${this.game.profile.titles[this.game.profile.titles.length - 1]}` : 'found footage. do not stop recording.'),
       h('div', { class: 'menu' },
         h('button', { class: 'btn primary', onclick: () => this.continueScreen() }, hasSave ? 'Continue' : 'Continue / Load'),
         h('button', { class: 'btn', onclick: () => this.newGameScreen() }, 'New Game'),
         h('button', { class: 'btn', onclick: () => this.manageScreen() }, 'Manage Saves'),
         h('button', { class: 'btn', onclick: () => this.settingsScreen() }, 'Settings'),
-        h('button', { class: 'btn', onclick: () => this.infoScreen('Bestiary', 'Entities you discover will be catalogued here. (Arrives with the entity systems in Phase 1.)') }, 'Bestiary'),
-        h('button', { class: 'btn', onclick: () => this.infoScreen('Ending Gallery', 'Six endings. None unlocked yet. (Endings arrive in Phase 5.)') }, 'Ending Gallery'),
-        h('button', { class: 'btn', onclick: () => this.infoScreen('Credits', 'Design, code, procedural art and synthesized audio: all generated in code. Rendering by three.js.') }, 'Credits'),
+        this.game.profile.ngPlus.includes('unlocked') ? h('button', { class: 'btn', onclick: () => this.newGameScreen(undefined, true) }, 'New Game+') : null,
+        h('button', { class: 'btn', onclick: () => this.show(bestiaryPanel(this.game, () => this.showTitle())) }, 'Bestiary'),
+        h('button', { class: 'btn', onclick: () => this.show(endingGalleryPanel(this.game, () => this.showTitle())) }, 'Ending Gallery'),
+        h('button', { class: 'btn', onclick: () => this.show(achievementsPanel(this.game, () => this.showTitle())) }, 'Achievements'),
+        h('button', { class: 'btn', onclick: () => this.show(howToPlayPanel(() => this.showTitle())) }, 'How to Play'),
+        h('button', { class: 'btn', onclick: () => this.show(creditsPanel(() => this.showTitle())) }, 'Credits'),
         h('hr'),
         h('button', { class: 'btn ghost', onclick: () => void this.launch('testroom') }, 'Test Room'),
         h('button', { class: 'btn ghost', onclick: () => void this.launch('placeholder') }, 'Placeholder Level'),
@@ -157,10 +161,6 @@ export class Ui {
   private async launch(id: string): Promise<void> {
     this.game.ensureAudio();
     await this.game.startLevel(id, 'TEST-ROOM', this.game.settings.value.difficulty, null);
-  }
-
-  private infoScreen(title: string, text: string): void {
-    this.show(h('div', { class: 'screen center' }, h('h2', {}, title), h('p', {}, text), h('button', { class: 'btn', onclick: () => this.showTitle() }, 'Back')));
   }
 
   private settingsScreen(from: 'title' | 'pause' = 'title'): void {
@@ -203,12 +203,13 @@ export class Ui {
     this.show(wrap);
   }
 
-  private async newGameScreen(preferSlot?: number): Promise<void> {
+  private async newGameScreen(preferSlot?: number, ngPlus = false): Promise<void> {
     const slots = await this.game.saves.listSlots();
     let slotNo = preferSlot ?? (slots.findIndex((s) => !s) + 1 || 1);
     let diff: DifficultyId = this.game.settings.value.difficulty;
     const desc = h('p', { class: 'diff-desc' });
     const seed = h('input', { type: 'text', placeholder: 'Random seed (optional)', maxlength: 24, autocapitalize: 'characters', 'aria-label': 'Run seed' });
+    const speed = h('input', { type: 'checkbox', id: 'speedrun' });
     const diffBtns = DIFFICULTY_ORDER.map((d) => h('button', { class: 'chip', onclick: () => { diff = d; paint(); } }, DIFFICULTIES[d].label));
     const slotBtns = Array.from({ length: SLOT_COUNT }, (_, i) => h('button', { class: 'chip', onclick: () => { slotNo = i + 1; paint(); } }, `Slot ${i + 1}${slots[i] ? ' (overwrite)' : ''}`));
     const paint = () => {
@@ -219,16 +220,18 @@ export class Ui {
     };
     paint();
     this.show(h('div', { class: 'screen' },
-      h('h2', {}, 'New game'),
+      h('h2', {}, ngPlus ? 'New Game+' : 'New game'),
+      ngPlus ? h('p', { class: 'muted' }, 'Entities are sharper and faster. Your lenses and titles carry over.') : null,
       h('label', { class: 'field' }, 'Save slot', h('div', { class: 'chips' }, ...slotBtns)),
       h('label', { class: 'field' }, 'Difficulty', h('div', { class: 'chips' }, ...diffBtns), desc),
       h('label', { class: 'field' }, 'Run seed', seed, h('small', { class: 'muted' }, 'Share a seed to give someone the same run. Leave empty for a random one.')),
+      h('label', { class: 'field' }, h('span', {}, speed, ' Speedrun mode'), h('small', { class: 'muted' }, 'Fixed seed, a running timer, and your time is recorded when you finish.')),
       h('div', { class: 'btn-row' },
         h('button', { class: 'btn', onclick: () => this.showTitle() }, 'Back'),
         h('button', { class: 'btn primary', onclick: async () => {
           if (slots[slotNo - 1] && !confirm(`Overwrite slot ${slotNo}?`)) return;
           this.game.ensureAudio();
-          await this.game.newGame(slotNo, diff, seed.value || randomSeedString());
+          await this.game.newGame(slotNo, diff, seed.value || randomSeedString(), { speedrun: speed.checked, ngPlus });
         } }, 'Begin'))));
   }
 
@@ -256,7 +259,7 @@ export class Ui {
     const text = p ? `[${glyphFor('Interact', this.game.input.device, this.game.settings.value.bindings, this.game.input.padLayout)}] ${p}` : '';
     if (text !== this.lastPrompt) { this.promptEl.textContent = text; this.lastPrompt = text; }
     const t = new Date(Date.UTC(1993, 5, 14, 3, 12, 0) + sim.time * 1000);
-    this.timeEl.textContent = `${t.getUTCHours().toString().padStart(2, '0')}:${t.getUTCMinutes().toString().padStart(2, '0')}:${t.getUTCSeconds().toString().padStart(2, '0')}  SP`;
+    if (this.game.currentSlot?.flags.speedrun) { const tot = this.game.currentSlot.playtime + sim.time; this.timeEl.textContent = `RUN ${fmtTime(tot)}`; } else this.timeEl.textContent = `${t.getUTCHours().toString().padStart(2, '0')}:${t.getUTCMinutes().toString().padStart(2, '0')}:${t.getUTCSeconds().toString().padStart(2, '0')}  SP`;
     ($('i', this.noise) as HTMLElement).style.width = `${Math.round(Math.min(1, sim.player.noise) * 100)}%`;
     // hotbar / vitals / gear: rebuilt only when something visible changed
     const key = [inv.hotbar.map((id) => (id ? `${id}${inv.count(id)}` : '-')).join(','), inv.selected, Math.round(st.health / 5), Math.round(st.sanity / 5), Math.round(st.hunger / 5), Math.round(st.thirst / 5), Math.round(sim.flash.battery), Math.round(sim.cam.battery / 5), sim.flash.on, sim.cam.nightVision, Math.round(st.breath / 5), Math.round(st.warmth / 5), inv.has('compass') ? Math.round(((-sim.player.yaw * 180) / Math.PI + 3600) % 360 / 15) : -1].join('|');

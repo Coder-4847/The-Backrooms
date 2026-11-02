@@ -29,7 +29,7 @@ const level1: LevelSpec = {
 
 // ---------------- Level 2: Pipe Dreams ----------------
 const level2: LevelSpec = {
-  id: 'level2', name: 'Level 2: Pipe Dreams', act: 1, tier: 'tense', door: { color: '#c97a3a', icon: '2' }, intensity: 0.55, targetSeconds: [90, 2200],
+  id: 'level2', name: 'Level 2: Pipe Dreams', anchor: 2, act: 1, tier: 'tense', door: { color: '#c97a3a', icon: '2' }, intensity: 0.55, targetSeconds: [90, 2200],
   look: look({ walls: [['concrete', 1], ['metal', 0], ['concrete', 1], ['metal', 0]], floor: ['metal', 0], ceiling: ['concrete', 1], trim: ['metal', 0], fogColor: 0x1a1008, fogDensity: 0.055, ambient: 0x4a3018, ambientIntensity: 0.4, lampColor: 0xff9a50, grade: { tint: [1.1, 0.95, 0.8], saturation: 1.05, contrast: 1.1 }, dust: 0xd8c0a0 }),
   graph: { width: 140, depth: 70, rooms: 34, minRoom: 5, maxRoom: 22, wallHeight: 3.2, locks: 2, lockStyles: ['valves', 'key'], loops: 0.3, variants: 4, nests: 2, loot: 36, lootTable: [['bottle', 3], ['can', 3], ['rag', 3], ['rope', 2], ['battery', 2], ['almond_water', 2], ['bandage', 2], ['cracker', 1]] },
   acoustics: { damping: 0.8 },

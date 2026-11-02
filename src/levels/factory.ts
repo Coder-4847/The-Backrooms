@@ -39,6 +39,8 @@ export interface LevelSpec {
   schedule?: { period: number; window: number; offset: number };
   portraits?: { count: number; wrong: number };
   ruleEntity?: 'concierge' | 'partygoers';
+  /** Which Anchor (1-5) hides here (optional side objective). */
+  anchor?: number;
 }
 
 const cen = (r: Room): Vec2 => ({ x: r.x + r.w / 2, z: r.z + r.d / 2 });
@@ -206,6 +208,22 @@ export function addPortraits(plan: LevelPlan, rng: Rng, o: { count: number; wron
   plan.portraits = out;
 }
 
+/** Optional Anchor (spec 8.6): a small object in the farthest off-path dead end, with a hint note near the start. */
+export function addAnchor(plan: LevelPlan, rng: Rng, n: number): void {
+  const onPath = new Set(plan.criticalPath);
+  const spawn = plan.rooms[plan.spawn.room];
+  const dist = (r: Room) => Math.hypot(r.x + r.w / 2 - (spawn.x + spawn.w / 2), r.z + r.d / 2 - (spawn.z + spawn.d / 2));
+  const bad = new Set<string>(['start', 'exit', 'supply', 'nest']);
+  const water = new Set((plan.water ?? []).filter((w) => w.depth === 'flooded').map((w) => w.room));
+  const pool = plan.rooms.filter((r) => !onPath.has(r.id) && !bad.has(r.kind) && !water.has(r.id));
+  const dead = pool.filter((r) => r.kind === 'dead');
+  const room = [...(dead.length ? dead : pool)].sort((a, b) => dist(b) - dist(a))[0];
+  if (!room) return;
+  plan.items.push({ id: `anchor${n}`, item: `anchor${n}`, kind: 'tool', room: room.id, pos: randIn(room, rng, 1.6) });
+  const h = plan.rooms[plan.spawn.room];
+  plan.items.push({ id: `note${plan.items.length}`, item: `anchor_hint${n}`, kind: 'note', room: h.id, pos: randIn(h, rng, 1.8) });
+}
+
 export function makeLevel(spec: LevelSpec): LevelDef {
   return {
     id: spec.id, name: spec.name, act: spec.act, tier: spec.tier, door: spec.door, targetSeconds: spec.targetSeconds, intensity: spec.intensity, look: spec.look,
@@ -230,6 +248,7 @@ export function makeLevel(spec: LevelSpec): LevelDef {
         plan.cold = { rate: spec.cold.rate, warm: plan.rooms.filter((r) => r.kind === 'supply' || r.kind === 'start').map((r) => r.id) };
       }
       if (spec.beacons) plan.beacons = [plan.exit.pos, ...plan.waypoints.map((w) => w.pos)];
+      if (spec.anchor) addAnchor(plan, rng, spec.anchor);
       spec.extra?.(plan, rng); // before props/hides so they steer clear of anything extra placed
       if (spec.props) addProps(plan, rng, spec.props);
       if (spec.portraits) addPortraits(plan, rng, spec.portraits);

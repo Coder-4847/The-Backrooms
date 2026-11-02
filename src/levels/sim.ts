@@ -37,6 +37,7 @@ export type SimEvent =
   | { type: 'splash'; x: number; z: number }
   | { type: 'train'; on: boolean }
   | { type: 'gaze'; wrong: boolean }
+  | { type: 'secret' }
   | { type: 'pickup'; item: ItemSpawn }
   | { type: 'full'; item: ItemSpawn }
   | { type: 'note'; id: string }
@@ -58,7 +59,7 @@ export interface Interactable { kind: 'item' | 'door' | 'waypoint' | 'exit' | 'h
 
 export interface SimOptions {
   seed?: number; mode?: 'active' | 'observe'; scare?: ScareIntensity; intensity?: number;
-  inventory?: Inventory; stats?: Stats; hungerEnabled?: boolean; spawnEntities?: boolean;
+  inventory?: Inventory; stats?: Stats; hungerEnabled?: boolean; spawnEntities?: boolean; /** New Game+: entities 12% sharper and faster */ ngPlus?: boolean;
 }
 
 export interface SimSnapshot { collected: string[]; keys: string[]; openDoors: number[]; activated: number[]; time: number; notes: string[]; respawn: { x: number; z: number; yaw: number } }
@@ -117,7 +118,7 @@ export class LevelSim {
 
   constructor(readonly plan: LevelPlan, difficulty: DifficultyId = 'normal', opts: SimOptions = {}) {
     this.opts = opts;
-    this.diff = DIFFICULTIES[difficulty];
+    this.diff = opts.ngPlus ? { ...DIFFICULTIES[difficulty], entitySpeed: DIFFICULTIES[difficulty].entitySpeed * 1.12, entityPerception: DIFFICULTIES[difficulty].entityPerception * 1.12, sanityDrain: DIFFICULTIES[difficulty].sanityDrain * 1.15 } : DIFFICULTIES[difficulty];
     this.waypoints = waypointsFor(plan, difficulty);
     for (const [, c] of indexChunks(plan)) this.world.add(`chunk:${c.cx},${c.cz}`, meshChunk(plan, c.cx, c.cz, { level: 0 }).colliders);
     for (const conn of plan.connections) if (conn.lock) {
@@ -236,6 +237,7 @@ export class LevelSim {
     this.ctx.pass = this.x.passHeld; this.ctx.time = this.time; this.ctx.trail = this.trail; this.ctx.alert = this.alert; this.ctx.trainActive = this.trainActive;
     this.ctx.safeSpots = [...this.activatedWaypoints].map((i) => this.waypoints[i].pos);
     this.x.update(dt, f);
+    if (this.x.secretDone && !this.x.secretFired) { this.x.secretFired = true; this.emit({ type: 'secret' }); }
     this.ew.update(dt, this.ctx);
 
     // stats, director, hallucinations

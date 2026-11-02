@@ -5,6 +5,7 @@
  * a seeded ecology (stick near the start of the route, hound pack in the farthest nest).
  */
 import { generateGraphLevel } from '../gen/graph';
+import { addAnchor } from './factory';
 import { Rng, deriveSeed } from '../gen/rng';
 import { LEVEL_NOTES } from '../story/notes';
 import type { HideSpot, ItemSpawn, LevelDef, LevelPlan } from '../gen/types';
@@ -44,6 +45,8 @@ function dress(plan: LevelPlan): LevelPlan {
     notes.push({ id: `note${i}`, item: noteIds[i], kind: 'note', room: r.id, pos });
   }
   plan.items.push(...notes);
+  addAnchor(plan, rng, 1);
+  plan.items.push({ id: `note${plan.items.length}`, item: 'l0_secret', kind: 'note', room: first.id, pos: { x: first.x + 2 + rng.next() * Math.max(0.1, first.w - 4), z: first.z + 2 + rng.next() * Math.max(0.1, first.d - 4) } });
 
   // ecology: the nearer nest holds the Stick, the farthest holds the hound pack (late cameo)
   const nests = plan.entitySlots.filter((s) => s.role === 'nest');
