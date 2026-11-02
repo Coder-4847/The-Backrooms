@@ -193,7 +193,7 @@ export class LevelSim {
     // water: speed, swimming, diving and breath
     this.waterHere = this.water.get(this.room) ?? null;
     const wd = this.waterHere;
-    p.waterMul = wd === 'wade' ? 0.8 : wd === 'swim' ? 0.55 : wd === 'flooded' ? 0.5 : 1;
+    p.waterMul = wd === 'wade' ? 0.88 : wd === 'swim' ? 0.55 : wd === 'flooded' ? 0.5 : 1;
     const diving = wd === 'flooded' || (wd === 'swim' && f.down.Crouch);
     p.swim = wd === 'swim' || wd === 'flooded' ? (diving ? 'dive' : 'surface') : 'none';
     this.outOfAir = this.stats.updateBreath(dt, diving, this.diff, wd === 'flooded' ? 4 : 3.2);

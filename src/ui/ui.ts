@@ -148,10 +148,7 @@ export class Ui {
         h('button', { class: 'btn', onclick: () => this.show(achievementsPanel(this.game, () => this.showTitle())) }, 'Achievements'),
         h('button', { class: 'btn', onclick: () => this.show(howToPlayPanel(() => this.showTitle())) }, 'How to Play'),
         h('button', { class: 'btn', onclick: () => this.show(creditsPanel(() => this.showTitle())) }, 'Credits'),
-        h('hr'),
-        h('button', { class: 'btn ghost', onclick: () => void this.launch('testroom') }, 'Test Room'),
-        h('button', { class: 'btn ghost', onclick: () => void this.launch('placeholder') }, 'Placeholder Level'),
-        h('button', { class: 'btn ghost', onclick: () => void this.launch('level0') }, 'Level 0 (standalone)')),
+        ...(debugEnabled() ? [h('hr'), h('button', { class: 'btn ghost', onclick: () => void this.launch('testroom') }, 'Test Room'), h('button', { class: 'btn ghost', onclick: () => void this.launch('placeholder') }, 'Placeholder Level'), h('button', { class: 'btn ghost', onclick: () => void this.launch('level0') }, 'Level 0 (standalone)')] : [])),
       h('div', { class: 'foot' }, `build ${import.meta.env.MODE}${debugEnabled() ? ' · debug: press the backtick key for the console' : ''}`));
     this.show(menu);
   }

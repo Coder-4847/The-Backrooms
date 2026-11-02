@@ -174,7 +174,7 @@ const leech: Behavior = (w, e, c, dt) => {
     case 'tell': { e.speed = 0; e.tellLeft -= dt; face(e, p); if (e.tellLeft <= 0) { e.data.attached = 0; w.change(e, 'chase'); } break; }
     case 'chase': { // slithers after you; once on you it bleeds you slowly
       if (d > 0.9) w.goTo(e, { x: p.x, z: p.z }, e.def.run * c.diff.entitySpeed, dt, c); else { e.speed = 0; e.data.attached = ((e.data.attached as number) || 0) + dt; if ((e.data.attached as number) > 1 && e.cooldown <= 0) { e.data.attached = 0; w.hit(e, c); } }
-      if (!sameRoom || d > 7) w.change(e, 'flee');
+      if (!sameRoom || d > 7 || !p.water) w.change(e, 'flee'); // leaving the sludge sheds it
       if (p.noise > 0.9) e.data.shake = ((e.data.shake as number) || 0) + dt; // thrashing about sheds it
       if ((e.data.shake as number) > 2) { e.data.shake = 0; w.change(e, 'flee'); }
       break;

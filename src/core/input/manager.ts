@@ -57,7 +57,7 @@ export class InputManager {
     window.addEventListener('pointerdown', (e) => { if (e.pointerType === 'touch') this.note('touch'); }, { passive: true });
     window.addEventListener('gamepadconnected', (e) => { this.padLayout = padLayoutFromId(e.gamepad.id); });
     window.addEventListener('deviceorientation', this.onOrientation);
-    this.touch.setVisible(this.tracker.device === 'touch');
+    this.touch.setVisible(false); // shown only while playing, so it never covers the menus
   }
 
   get device(): DeviceKind { return this.tracker.device; }

@@ -135,6 +135,16 @@ try {
   check('the Architect offers the decision', true);
   await page.click('text=Take the exit key and leave'); await page.waitForSelector('.paper');
   check('an ending plays and is recorded', (await ev(() => (window as any).__game.profile.endings.length)) >= 1);
+  // ---- Phase 5: after the ending: Continue -> menu; gallery, achievements, how to play, New Game+ are available ----
+  await page.click('text=Continue'); await page.waitForSelector('.title', { timeout: 60000 });
+  await page.click('text=Ending Gallery'); await page.waitForSelector('text=1 of 6 seen');
+  check('ending gallery records the ending', (await page.locator('.slot:not(.empty)').count()) === 1);
+  await page.click('text=Back'); await page.waitForSelector('.title');
+  await page.click('text=Achievements'); await page.waitForSelector('text=First Noclip');
+  check('achievements list shows unlocked ones', (await page.locator('.row-label:has-text("✓")').count()) >= 2);
+  await page.click('text=Back'); await page.waitForSelector('.title');
+  await page.click('text=How to Play'); await page.waitForSelector('.howto'); await page.click('text=Back'); await page.waitForSelector('.title');
+  check('New Game+ is unlocked after an ending', await page.locator('text=New Game+').count() > 0);
   check('no page errors', errors.length === 0, errors.slice(0, 3).join(' | '));
 } finally { await browser.close(); proc.kill(); }
 console.log(failed ? `\n${failed} check(s) failed` : '\nsmoke ok');

@@ -209,6 +209,13 @@ describe('Act 2 entities (entity lab)', () => {
     let tell = -1, hits = 0; lab.run(8, (t) => { for (const e of lab.events) { if (e.type === 'tell' && tell < 0) tell = t; } hits = lab.events.filter((e) => e.type === 'hit').length; });
     expect(tell).toBeGreaterThan(0); expect(hits).toBeGreaterThan(0); expect(l.def.damage).toBeLessThan(5);
   });
+  it('stepping out of the sludge sheds an attached Leech', () => {
+    const lab = makeLab(); const l = lab.ew.spawn('leech', 10, 15);
+    lab.player.x = 8; lab.player.z = 15; lab.player.water = true;
+    lab.run(5); expect(['tell', 'chase']).toContain(l.state);
+    lab.player.water = false; lab.run(1);
+    expect(l.state).toBe('flee');
+  });
   it('Static blinks toward you, tears the screen (tell), and is drawn to your light', () => {
     const lab = makeLab(); const s = lab.ew.spawn('static', 25, 15);
     lab.player.x = 8; lab.player.z = 15; lab.player.flashOn = true; lab.player.yaw = Math.PI / 2;

@@ -11,7 +11,7 @@ button, input, select { font: inherit; color: inherit; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* screens */
-#ui { position: absolute; inset: 0; pointer-events: none; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+#ui { position: absolute; inset: 0; z-index: 15; pointer-events: none; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
 #ui.active { pointer-events: auto; background: radial-gradient(ellipse at 30% 50%, rgba(8, 7, 4, 0.55), rgba(8, 7, 4, 0.9)); overflow-y: auto; touch-action: pan-y; }
 .screen { max-width: 760px; margin: 0 auto; padding: 5vh 16px 6vh; display: flex; flex-direction: column; gap: 14px; animation: fade 0.35s ease both; }
 .screen.title { max-width: 380px; margin: 0 0 0 clamp(16px, 8vw, 120px); padding-top: 9vh; }
@@ -150,7 +150,7 @@ select { background: var(--panel); border: 1px solid var(--line); padding: 8px 1
 h4 { margin: 10px 0 2px; color: var(--accent); font-weight: 500; }
 
 /* HUD extras */
-.hotbar { position: absolute; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 18px); transform: translateX(-50%); display: flex; gap: 6px; pointer-events: auto; }
+.hotbar { z-index: 12; position: absolute; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 18px); transform: translateX(-50%); display: flex; gap: 6px; pointer-events: auto; }
 .hb { min-width: 76px; padding: 4px 8px; background: rgba(12, 11, 8, 0.6); border: 1px solid var(--line); font-size: 0.7em; text-align: center; cursor: pointer; }
 .hb.on { border-color: var(--accent); color: var(--accent); }
 .hb small { display: block; opacity: 0.6; }
