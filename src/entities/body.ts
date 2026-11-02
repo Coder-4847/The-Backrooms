@@ -17,14 +17,19 @@ const V = (x: number, y: number, z: number) => new Vector3(x, y, z);
 const smooth = (a: number, b: number, x: number) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
 /** Slots shared by all rigs. */
-const enum S { Skin = 0, Cloth = 1, Pants = 2, Shoes = 3, Eye = 4, Hair = 5, Accent = 6, Dark = 7 }
+const enum S { Skin = 0, Cloth = 1, Pants = 2, Shoes = 3, Eye = 4, Hair = 5, Accent = 6, Dark = 7, Lip = 8, Nail = 9 }
 
 interface Built { mesh: SkinnedMesh; mats: Material[]; extras: { geo: BufferGeometry[]; mats: Material[] } }
 
 function finish(sc: Sculptor, defs: Partial<Record<S, SurfDef>>, level: number, ghost = false): Built {
   const mats: Material[] = [];
-  for (let i = 0; i <= 7; i++) {
-    const d = defs[i as S] ?? defs[S.Skin]!;
+  const sk = defs[S.Skin]!;
+  const auto: Partial<Record<S, SurfDef>> = {
+    [S.Lip]: { ...sk, color: new Color(sk.color).lerp(new Color(0x8a3a34), 0.32).getHex(), rough: 0.42 },
+    [S.Nail]: { color: new Color(sk.color).lerp(new Color(0xf0dcd0), 0.45).getHex(), rough: 0.3, clearcoat: 0.6 },
+  };
+  for (let i = 0; i <= 9; i++) {
+    const d = defs[i as S] ?? auto[i as S] ?? sk;
     mats.push(surface(level, ghost ? { ...d, transparent: true, opacity: 0.42 } : d));
   }
   const mesh = sc.build(mats);
@@ -145,6 +150,25 @@ function sculptHuman(sc: Sculptor, P: Proportions, D: Dress): HumanRig {
   }, 1.5);
   // ears
   if (D.eyes !== 'void') for (const sx of [-1, 1]) sc.blob(V(hc.x + sx * rx * 0.98, hc.y - 0.005 * hs, hc.z + 0.01 * hs), 0.012 * hs, 0.03 * hs, 0.02 * hs, S.Skin, head, undefined, 0.5);
+  const eyePos = [-1, 1].map((sx) => { const e = eyeL(sx); return V(hc.x + e.x * rx * 0.94, hc.y + e.y * ry, hc.z + e.z * rz * 0.86); });
+  const surf = (x: number, y: number, z: number, out = 0) => { const l = V(x, y, z).normalize(); return V(hc.x + l.x * rx, hc.y + l.y * ry, hc.z + l.z * rz - out); };
+  if (D.eyes === 'human' || D.eyes === 'glow') {
+    const er = 0.0125 * k;
+    for (const e of eyePos) {
+      // upper lid hooding the top of the eyeball, a thinner lower lid; crisp lid edges
+      sc.blob(V(e.x, e.y + er * 0.42, e.z - er * 0.12), er * 1.38, er * 0.78, er * 1.02, S.Skin, head, (p, l) => { if (l.y < -0.1) p.y = Math.max(p.y, e.y + er * 0.12); }, 0.45);
+      sc.blob(V(e.x, e.y - er * 0.66, e.z - er * 0.02), er * 1.2, er * 0.42, er * 0.95, S.Skin, head, undefined, 0.35);
+    }
+    if (sc.level >= 2) {
+      for (const sx of [-1, 1]) { // eyebrows
+        const pts = [surf(sx * 0.14, 0.31, -0.95, 0.004 * hs), surf(sx * 0.36, 0.35, -0.87, 0.004 * hs), surf(sx * 0.58, 0.29, -0.74, 0.003 * hs)];
+        sc.sweep(pts, [0.0042 * hs, 0.0038 * hs, 0.0022 * hs], { slot: S.Hair, stops: [[0, head], [1, head]], flat: [1, 0.45], capStart: true, capEnd: true }, 0.35);
+      }
+    }
+    // lips: upper and lower, following the curve of the face
+    const lip = (y: number, r: number) => sc.sweep([-0.27, -0.14, 0, 0.14, 0.27].map((x) => surf(x, y, -0.95 + Math.abs(x) * 0.3, 0.0015 * hs)), [r * 0.3, r * 0.85, r, r * 0.85, r * 0.3], { slot: S.Lip, stops: [[0, head], [1, head]], flat: [1, 0.7], capStart: true, capEnd: true }, 0.4);
+    lip(-0.4, 0.0052 * hs); lip(-0.465, 0.0062 * hs);
+  }
   if (D.hair) sc.blob(V(hc.x, hc.y + 0.008 * hs, hc.z + 0.004 * hs), rx * 1.07, ry * 1.04, rz * 1.06, S.Hair, head, (p, l) => {
     // keep the hair cap above the brow and ears: tuck everything else inside the skull
     const front = -l.z;
@@ -165,7 +189,9 @@ function sculptHuman(sc: Sculptor, P: Proportions, D: Dress): HumanRig {
       [0.048 * th, 0.052 * th * (1 - gaunt * 0.3), 0.048 * th * (1 - gaunt * 0.35), 0.04 * th * (1 - gaunt * 0.3), 0.043 * th * (1 - gaunt * 0.4), 0.03 * th],
       {
         slot: armSlot, stops: [[0, chest], [0.18, sh[i]], [0.52, sh[i]], [0.62, el[i]], [0.97, el[i]], [1, wr[i]]],
-        mod: (t, a) => 1 + (t > 0.25 && t < 0.55 ? Math.sin(((t - 0.25) / 0.3) * Math.PI) * 0.08 * Math.max(0, Math.sin(a)) * (1 - gaunt) : 0) + (gaunt > 0.4 && Math.abs(t - 0.6) < 0.05 ? 0.25 * gaunt : 0),
+        mod: (t, a) => 1 + (t > 0.25 && t < 0.55 ? Math.sin(((t - 0.25) / 0.3) * Math.PI) * 0.08 * Math.max(0, Math.sin(a)) * (1 - gaunt) : 0) + (gaunt > 0.4 && Math.abs(t - 0.6) < 0.05 ? 0.25 * gaunt : 0)
+          // sleeve creases bunching at the elbow, a looser drape on the upper arm
+          + (D.shirt ? 0.035 * Math.sin(t * 74 + a * 1.7) * smooth(0.42, 0.55, t) * smooth(0.78, 0.62, t) + 0.015 * Math.sin(a * 3 + t * 11) : 0),
       }, 1);
     if (D.shirt) sc.sweep([V(w0.x, w0.y + 0.06 * k, w0.z), V(w0.x, w0.y + 0.015 * k, w0.z)], [0.034 * th, 0.032 * th], { slot: S.Skin, stops: [[0, el[i]], [1, wr[i]]] }, 0.5);
     // hand: palm + fingers (curled slightly toward the thigh)
@@ -179,12 +205,18 @@ function sculptHuman(sc: Sculptor, P: Proportions, D: Dress): HumanRig {
         const len = (f === 0 || f === 3 ? 0.06 : 0.072) * k * fl;
         sc.sweep([base, V(base.x - sx * 0.004 * k, base.y - len * 0.55, fz - 0.002 * k), V(base.x - sx * 0.014 * k, base.y - len, fz - 0.004 * k)],
           [0.009 * k, 0.008 * k, 0.0065 * k], { slot: S.Skin, stops: [[0, wr[i]], [1, wr[i]]], capEnd: true, mod: (t) => 1 + (Math.abs(t - 0.5) < 0.06 ? 0.15 : 0) }, 0.4);
+        const tip = V(base.x - sx * 0.014 * k, base.y - len, fz - 0.004 * k);
+        sc.blob(V(tip.x + sx * 0.0045 * k, tip.y + 0.007 * k, tip.z), 0.0022 * k, 0.0075 * k, 0.0055 * k, S.Nail, wr[i], undefined, 0.3);
       }
       const tb = V(palm.x - sx * 0.008 * k, palm.y - 0.01 * k, palm.z - 0.04 * k);
       sc.sweep([tb, V(tb.x - sx * 0.008 * k, tb.y - 0.03 * k, tb.z - 0.016 * k), V(tb.x - sx * 0.012 * k, tb.y - 0.05 * k * fl, tb.z - 0.02 * k)], [0.011 * k, 0.009 * k, 0.007 * k], { slot: S.Skin, stops: [[0, wr[i]], [1, wr[i]]], capEnd: true }, 0.4);
     }
   });
 
+  if (D.pants) { // belt
+    sc.sweep([V(0, yHip + 0.03 * k, 0.012 * k), V(0, yHip + 0.065 * k, 0.012 * k)], [1.6 * hw * 1.04, 1.62 * hw * 1.04], { slot: S.Shoes, stops: [[0, root], [1, root]], flat: [1, 0.64], up: V(0, 0, -1) }, 0.6);
+    sc.blob(V(0, yHip + 0.048 * k, 0.012 * k - 1.6 * hw * 1.04 * 0.64 - 0.004 * k), 0.022 * k, 0.016 * k, 0.006 * k, S.Nail, root, undefined, 0.3); // buckle
+  }
   // ---- legs (hip -> knee -> ankle) + feet
   const legSlot = D.pants ? S.Pants : S.Skin;
   [-1, 1].forEach((sx, i) => {
@@ -193,14 +225,15 @@ function sculptHuman(sc: Sculptor, P: Proportions, D: Dress): HumanRig {
       [0.095 * th, 0.088 * th * (1 - gaunt * 0.3), 0.068 * th * (1 - gaunt * 0.35), 0.05 * th, 0.058 * th * (1 - gaunt * 0.4), 0.042 * th, 0.036 * th],
       {
         slot: legSlot, stops: [[0, root], [0.15, hp[i]], [0.52, hp[i]], [0.6, kn[i]], [0.97, kn[i]], [1, an[i]]],
-        mod: (t, a) => 1 + (t > 0.62 && t < 0.85 ? Math.sin(((t - 0.62) / 0.23) * Math.PI) * 0.1 * Math.max(0, -Math.sin(a)) * (1 - gaunt) : 0) + (Math.abs(t - 0.56) < 0.04 ? 0.08 + gaunt * 0.2 : 0),
+        mod: (t, a) => 1 + (t > 0.62 && t < 0.85 ? Math.sin(((t - 0.62) / 0.23) * Math.PI) * 0.1 * Math.max(0, -Math.sin(a)) * (1 - gaunt) : 0) + (Math.abs(t - 0.56) < 0.04 ? (D.pants ? 0.03 : 0.08 + gaunt * 0.2) : 0)
+          // trouser creases behind the knee and the break over the shoe
+          + (D.pants ? 0.03 * Math.sin(t * 60 + a * 2.2) * smooth(0.48, 0.56, t) * smooth(0.7, 0.6, t) + 0.05 * smooth(0.9, 1, t) + 0.012 * Math.sin(a * 2 + t * 7) : 0),
       }, 1);
     const footSlot = D.shoes ? S.Shoes : S.Skin;
     sc.sweep([V(a0.x, a0.y + 0.03 * k, a0.z + 0.035 * k), V(a0.x, 0.045 * k, a0.z - 0.03 * k), V(a0.x + sx * 0.005 * k, 0.035 * k, a0.z - 0.12 * k * (P.finger > 1.5 ? 1.4 : 1)), V(a0.x + sx * 0.008 * k, 0.03 * k, a0.z - 0.17 * k * (P.finger > 1.5 ? 1.4 : 1))],
       [0.042 * k, 0.045 * k, 0.04 * k, 0.032 * k], { slot: footSlot, stops: [[0, an[i]], [1, an[i]]], flat: [1.05, 0.62], up: V(0, 1, 0), capStart: true, capEnd: true }, 0.7);
   });
 
-  const eyePos = [-1, 1].map((sx) => { const e = eyeL(sx); return V(hc.x + e.x * rx * 0.94, hc.y + e.y * ry, hc.z + e.z * rz * 0.86); });
   return { root, spine, chest, neck, head, sh, el, wr, hp, kn, an, eyePos, headTop: hc.y + ry, handPos };
 }
 
@@ -369,8 +402,12 @@ export function buildHumanoid(level: number, o: HumanOpts): Body {
   const head = sc.bones[r.head], hj = sc.jointPos(r.head);
   const eyes: Mesh[] = [];
   if (o.eyes !== 'none') {
-    const em = o.eyes === 'glow' ? new MeshBasicMaterial({ color: new Color(0xf4f0d0).multiplyScalar(2.5) }) : new MeshStandardMaterial({ color: 0x0c0a08, roughness: 0.08 });
-    for (const p of r.eyePos) eyes.push(attach(b, head, new SphereGeometry(0.0125 * o.height / 1.75, 10, 8), em, p.x, p.y, p.z, hj));
+    const irises = [0x5a3a22, 0x3a5a6a, 0x4a5a32, 0x2a1e16, 0x6a6a5a];
+    const iris = irises[Math.abs(Math.round(o.suit + o.height * 100)) % irises.length];
+    const em = o.eyes === 'glow' ? new MeshBasicMaterial({ color: new Color(0xf4f0d0).multiplyScalar(2.5) })
+      : level <= 1 ? surface(level, { color: 0x6a5a4c, kind: 'eye' }) : surface(level, { color: 0xffffff, kind: 'eye', iris, rough: 0.06, clearcoat: 1 });
+    const seg = level >= 3 ? 16 : 10;
+    for (const p of r.eyePos) eyes.push(attach(b, head, new SphereGeometry(0.0125 * o.height / 1.75, seg, Math.round(seg * 0.75)), em, p.x, p.y, p.z, hj));
   }
   if (o.lantern) {
     const lm = new MeshBasicMaterial({ color: new Color(0xffb050).multiplyScalar(3) }), hp = r.handPos[1];

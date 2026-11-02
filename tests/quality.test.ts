@@ -56,6 +56,7 @@ describe('quality tiers', () => {
   });
   it('does nothing when the user fixed the tier', () => {
     const q = new AdaptiveQuality('ultra', false);
-    for (let i = 0; i < 3000; i++) expect(q.update(100)).toBeNull();
+    for (let i = 0; i < 3000; i++) { const a = q.update(100); expect(a === null || a.kind === 'scale').toBe(true); }
+    expect(q.scale).toBeLessThan(1); // manual tiers still get dynamic resolution
   });
 });

@@ -10,7 +10,7 @@
  */
 import {
   Bone, BufferAttribute, BufferGeometry, CatmullRomCurve3, DataTexture, LinearMipmapLinearFilter, LinearFilter, RepeatWrapping, NoColorSpace,
-  Color, Material, MeshBasicMaterial, MeshLambertMaterial, MeshPhysicalMaterial, MeshStandardMaterial, Skeleton, SkinnedMesh, SphereGeometry, Vector2, Vector3,
+  Color, Material, MeshBasicMaterial, CanvasTexture, SRGBColorSpace, ShaderChunk, MeshLambertMaterial, MeshPhysicalMaterial, MeshStandardMaterial, Skeleton, SkinnedMesh, SphereGeometry, Vector2, Vector3,
 } from 'three';
 import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { heightToNormal } from '../gen/textures';
@@ -234,7 +234,70 @@ export function detailNormal(kind: DetailKind): DataTexture {
   return t;
 }
 
-export interface SurfDef { color: number; rough?: number; metal?: number; kind?: DetailKind | 'eye' | 'glow' | 'flat'; emissive?: number; glow?: number; sheen?: number; clearcoat?: number; transparent?: boolean; opacity?: number }
+/** Skin tone map (128px, sRGB, multiplies the base colour): blotchy redness, freckles, pores, veins. */
+let skinToneTex: DataTexture | null = null;
+function skinTone(): DataTexture {
+  if (skinToneTex) return skinToneTex;
+  const N = 128, d = new Uint8ClampedArray(N * N * 4); // clamped: values over 255 must not wrap to 0
+  const vn = (x: number, y: number, p: number, s: number) => {
+    const fx = (x / N) * p, fy = (y / N) * p, ix = Math.floor(fx), iy = Math.floor(fy), u = fx - ix, v = fy - iy;
+    const a = hash(ix % p, iy % p, s), b = hash((ix + 1) % p, iy % p, s), c = hash(ix % p, (iy + 1) % p, s), e = hash((ix + 1) % p, (iy + 1) % p, s);
+    const su = u * u * (3 - 2 * u), sv = v * v * (3 - 2 * v);
+    return a + (b - a) * su + (c - a) * sv + (a - b - c + e) * su * sv;
+  };
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const red = Math.max(0, vn(x, y, 4, 11) * 0.7 + vn(x, y, 16, 12) * 0.3 - 0.5) * 0.8; // blotchy flush
+    const freckle = vn(x, y, 64, 13) > 0.83 ? 0.12 : 0;
+    const pore = vn(x, y, 128, 14) > 0.8 ? 0.05 : 0;
+    const vein = Math.max(0, 1 - Math.abs(vn(x, y, 8, 15) - 0.5) * 30) * 0.03;
+    const k = 0.94 + vn(x, y, 8, 16) * 0.1 - freckle - pore;
+    const i = (y * N + x) * 4;
+    d[i] = Math.min(255, 255 * k * (1 + red * 0.06)); d[i + 1] = 255 * k * (1 - red * 0.12 - vein * 0.3); d[i + 2] = 255 * k * (1 - red * 0.12 + vein); d[i + 3] = 255;
+  }
+  const t = new DataTexture(d as unknown as Uint8Array, N, N); t.wrapS = t.wrapT = RepeatWrapping; t.colorSpace = SRGBColorSpace; t.magFilter = LinearFilter; t.minFilter = LinearMipmapLinearFilter; t.generateMipmaps = true; t.needsUpdate = true;
+  return (skinToneTex = t);
+}
+
+/** Eyeball map: sclera with faint veins, a coloured iris and the pupil facing -z (SphereGeometry u = 0.75). */
+const eyeTex = new Map<number, CanvasTexture>();
+export function eyeTexture(iris: number): CanvasTexture {
+  const hit = eyeTex.get(iris);
+  if (hit) return hit;
+  const c = document.createElement('canvas'); c.width = 256; c.height = 128;
+  const g = c.getContext('2d')!;
+  g.fillStyle = '#e9e1d6'; g.fillRect(0, 0, 256, 128);
+  g.strokeStyle = 'rgba(170,40,40,0.25)'; g.lineWidth = 0.8;
+  for (let i = 0; i < 26; i++) { const a = i * 0.9; g.beginPath(); g.moveTo(192 + Math.cos(a) * 60, 64 + Math.sin(a) * 50); g.quadraticCurveTo(192 + Math.cos(a + 0.3) * 40, 64 + Math.sin(a + 0.3) * 32, 192 + Math.cos(a) * 26, 64 + Math.sin(a) * 24); g.stroke(); }
+  const col = new Color(iris);
+  const grd = g.createRadialGradient(192, 64, 3, 192, 64, 21);
+  grd.addColorStop(0, `#${col.clone().multiplyScalar(0.5).getHexString()}`); grd.addColorStop(0.55, `#${col.getHexString()}`); grd.addColorStop(0.9, `#${col.clone().multiplyScalar(0.55).getHexString()}`); grd.addColorStop(1, '#1a1410');
+  g.fillStyle = grd; g.beginPath(); g.ellipse(192, 64, 21, 21, 0, 0, 7); g.fill();
+  g.strokeStyle = `rgba(0,0,0,0.25)`; for (let i = 0; i < 30; i++) { const a = (i / 30) * Math.PI * 2; g.beginPath(); g.moveTo(192 + Math.cos(a) * 8, 64 + Math.sin(a) * 8); g.lineTo(192 + Math.cos(a) * 20, 64 + Math.sin(a) * 20); g.stroke(); }
+  g.fillStyle = '#050403'; g.beginPath(); g.ellipse(192, 64, 8, 8, 0, 0, 7); g.fill();
+  const t = new CanvasTexture(c); t.colorSpace = SRGBColorSpace;
+  eyeTex.set(iris, t);
+  return t;
+}
+
+/**
+ * Cheap subsurface scattering for skin: wrapped diffuse with a red-shifted terminator, so light bleeds
+ * softly round the edge of a face or a finger instead of cutting off like plastic.
+ */
+const SSS_TARGET = 'reflectedLight.directDiffuse += irradiance * diffuseBRDF * ( 1.0 - F );';
+function addSkinScatter(m: MeshStandardMaterial): void {
+  m.onBeforeCompile = (sh) => {
+    const chunk = ShaderChunk.lights_physical_pars_fragment;
+    if (!chunk.includes(SSS_TARGET)) return;
+    sh.fragmentShader = sh.fragmentShader.replace('#include <lights_physical_pars_fragment>', chunk.replace(SSS_TARGET, `
+      float sssNL = dot( geometryNormal, directLight.direction );
+      vec3 sssTint = mix( vec3( 1.0, 0.7, 0.6 ), vec3( 1.0 ), saturate( sssNL * 1.5 + 0.35 ) );
+      vec3 sssIrr = directLight.color * saturate( ( sssNL + 0.28 ) / 1.28 ) * sssTint;
+      reflectedLight.directDiffuse += sssIrr * diffuseBRDF * ( 1.0 - F );`));
+  };
+  m.customProgramCacheKey = () => 'skin-sss';
+}
+
+export interface SurfDef { color: number; rough?: number; metal?: number; kind?: DetailKind | 'eye' | 'glow' | 'flat'; iris?: number; emissive?: number; glow?: number; sheen?: number; clearcoat?: number; transparent?: boolean; opacity?: number }
 
 /** Material for a slot, scaled by tier: Physical (sheen/clearcoat, detail normals) on High+, Standard on Medium, Lambert below. */
 export function surface(level: number, d: SurfDef): Material {
@@ -250,6 +313,7 @@ export function surface(level: number, d: SurfDef): Material {
   const base = {
     color: d.color, roughness: d.rough ?? 0.7, metalness: d.metal ?? 0, emissive: new Color(d.emissive ?? 0), transparent, opacity,
     ...(detail ? { normalMap: detail, normalScale: new Vector2(ns, ns) } : {}),
+    ...(d.kind === 'skin' ? { map: skinTone() } : d.kind === 'eye' && d.iris !== undefined && typeof document !== 'undefined' ? { map: eyeTexture(d.iris) } : {}),
   };
   let m: MeshStandardMaterial;
   if (level >= 3) {
@@ -262,5 +326,6 @@ export function surface(level: number, d: SurfDef): Material {
     });
   } else m = new MeshStandardMaterial(base);
   if (d.kind === 'eye') m.userData.keep = true;
+  if (d.kind === 'skin' && !transparent) addSkinScatter(m);
   return m;
 }

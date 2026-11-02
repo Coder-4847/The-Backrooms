@@ -307,6 +307,16 @@ export class Flow {
     const g = this.g, ui = g.ui, close = () => ui.closePanel();
     if (!g.level) return;
     if ((ref as { type: string }).type === 'architect') { ui.openPanel(finalePanel(g, close)); return; }
+    if ((ref as { type: string }).type === 'clue') {
+      const c = ref as unknown as { text: string; img?: () => string | undefined };
+      const src = c.img?.();
+      g.sounds()?.click('tick');
+      ui.openPanel(h('div', { class: 'screen center panel clue-panel' },
+        src ? h('img', { class: 'clue-img', src, alt: c.text }) : h('p', { class: 'note-text paper' }, c.text),
+        h('p', { class: 'clue-caption' }, c.text),
+        h('button', { class: 'btn', onclick: close }, 'Put it back')));
+      return;
+    }
     if (ref.type === 'door') ui.openPanel(doorPanel(g, ref.index, this.hubState(), close));
     else if (ref.type === 'npc') ui.openPanel(dialoguePanel(g, ref.id, close));
     else switch (ref.kind) {

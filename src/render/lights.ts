@@ -2,11 +2,15 @@
  * LightPool: a fixed number of real THREE point lights re-assigned each frame to the nearest
  * ceiling lights (fixed count => no shader recompiles). Swaps cross-fade to avoid popping.
  * Flicker is computed from the light's seeded flag; "reduce flicker" damps it (photosensitivity).
+ * Lights are NEVER hidden (`visible = false`): that changes the scene's light count and makes three.js
+ * recompile every shader (a 100+ ms hitch each time a lamp swaps in or out). Unused slots sit at
+ * intensity 0 instead. Shadow maps refresh round-robin (one shadowed slot per frame, more often when
+ * close) instead of all six cube faces of every light every frame.
  */
 import { Color, PointLight, type Scene } from 'three';
 import type { LightDef } from '../gen/mesher';
 
-interface Slot { light: PointLight; def: LightDef | null; next: LightDef | null; fade: number; shadow: boolean }
+interface Slot { light: PointLight; def: LightDef | null; next: LightDef | null; fade: number; shadow: boolean; lastShadowDef?: LightDef | null }
 
 export function flickerAt(def: LightDef, t: number, reduce: boolean): number {
   if (def.broken) return 0;
@@ -37,6 +41,7 @@ export class LightPool {
         light.shadow.mapSize.set(shadowMap, shadowMap);
         light.shadow.camera.near = 0.2; light.shadow.camera.far = distance;
         light.shadow.bias = -0.002; light.shadow.radius = 3;
+        light.shadow.autoUpdate = false; light.shadow.needsUpdate = true;
       }
       scene.add(light);
       this.slots.push({ light, def: null, next: null, fade: 0, shadow });
@@ -88,10 +93,18 @@ export class LightPool {
         this.color.setHex(d.color);
         s.light.color.copy(this.color);
         s.light.intensity = baseIntensity * d.intensity * flickerAt(d, t, this.reduceFlicker) * s.fade * burst;
-        s.light.visible = s.fade > 0.001;
-      } else { s.light.intensity = 0; s.light.visible = false; }
+      } else s.light.intensity = 0;
+    }
+    // staggered shadow refresh: one shadowed slot per frame (entities and the player move, lamps don't)
+    this.frame++;
+    const shadowed = this.slots.filter((s) => s.shadow);
+    if (shadowed.length && this.frame % 2 === 0) {
+      const s = shadowed[(this.frame / 2) % shadowed.length];
+      s.light.shadow.needsUpdate = s.light.intensity > 0.01;
+      for (const o of shadowed) if (o !== s && o.def !== o.lastShadowDef) { o.light.shadow.needsUpdate = o.light.intensity > 0.01; o.lastShadowDef = o.def; }
     }
   }
+  private frame = 0;
 
   dispose(): void { for (const s of this.slots) { this.scene.remove(s.light); s.light.dispose(); } this.slots.length = 0; }
 }

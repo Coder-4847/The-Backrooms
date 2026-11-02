@@ -60,6 +60,7 @@ export function creditsPanel(close: () => void): HTMLElement {
     h('p', {}, 'Design, code, procedural art, entities and synthesized audio: generated in code.'),
     h('p', { class: 'muted' }, 'Rendering by three.js. Everything else, from the wallpaper to the hum, is made from noise and math.'),
     h('p', { class: 'muted' }, 'Backrooms concepts come from community lore; all designs, names and text here are original implementations.'),
+    h('p', { class: 'muted' }, 'Handwriting on the notes: Reenie Beanie by James Grieshaber (SIL Open Font License 1.1).'),
     h('button', { class: 'btn', onclick: close }, 'Back'));
 }
 

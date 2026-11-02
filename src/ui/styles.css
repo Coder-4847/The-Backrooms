@@ -167,3 +167,7 @@ body.hiding #app::after { content: ''; position: absolute; inset: 0; pointer-eve
 .rewind::before { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.06) 0 2px, transparent 2px 5px); animation: roll 0.4s linear infinite; }
 @keyframes roll { to { background-position: 0 20px; } }
 .rewind .big { font-size: 2em; color: var(--rec); }
+/* scrawled clue notes */
+.clue-panel { gap: 12px; }
+.clue-img { width: min(78vw, 340px); height: auto; transform: rotate(-1.5deg); box-shadow: 0 10px 40px rgba(0, 0, 0, 0.7); image-rendering: auto; }
+.clue-caption { font-size: 0.85em; opacity: 0.55; max-width: 340px; text-align: center; }

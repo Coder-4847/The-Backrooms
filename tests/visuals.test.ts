@@ -5,6 +5,8 @@ import { bakeLighting } from '../src/render/bake';
 import { synthTexture } from '../src/gen/textures';
 import { buildBody } from '../src/entities/body';
 import type { Mesh } from 'three';
+import { planClues } from '../src/gen/clues';
+import { LEVELS } from '../src/levels/registry';
 
 const plan = levelById('level0')!.generate(42, { difficulty: 'normal' });
 
@@ -46,6 +48,24 @@ describe('visual assets', () => {
         expect(tris).toBeGreaterThan(100);
         expect(tris).toBeLessThan(lvl === 0 ? 2500 : 25000);
         b.dispose();
+      }
+    }
+  });
+});
+
+describe('clue notes', () => {
+  it('every playable level gets a few deterministic clues, placed inside their rooms', () => {
+    for (const def of LEVELS.filter((l) => !l.dev && l.id !== 'hub')) {
+      const p = def.generate(7, { difficulty: 'normal' });
+      const a = planClues(p), b = planClues(def.generate(7, { difficulty: 'normal' }));
+      expect(JSON.stringify(a)).toBe(JSON.stringify(b));
+      if (p.hub || p.finale) continue;
+      expect(a.length, def.id).toBeGreaterThanOrEqual(1);
+      expect(a.length).toBeLessThanOrEqual(8);
+      for (const c of a) {
+        const r = p.rooms[c.room];
+        expect(c.x >= r.x - 0.01 && c.x <= r.x + r.w + 0.01 && c.z >= r.z - 0.01 && c.z <= r.z + r.d + 0.01, `${def.id} ${c.id}`).toBe(true);
+        expect(c.text.length).toBeGreaterThan(3);
       }
     }
   });

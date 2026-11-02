@@ -105,21 +105,33 @@ export class MaterialLibrary {
   }
 
   /** Replace a material's maps with a higher-resolution set (same kind) without recompiling. */
+  /**
+   * Queue a material for its higher-resolution maps. Uploads are paced by `pump()`: one texture per
+   * frame is uploaded ahead of time (initTexture), and the material swaps once all its maps are on
+   * the GPU, so streaming never costs more than a single upload in any frame.
+   */
   private upgrade(m: Material, s: TexSet): void {
     if (this.disposed) return;
-    const swap = (old: Texture | null, data: Uint8ClampedArray, srgb: boolean): Texture | null => {
-      if (!old) return null;
-      const t = tex(data, s.size, srgb, this.maxAniso);
-      this.textures.push(t);
-      old.dispose(); this.textures = this.textures.filter((x) => x !== old);
-      return t;
-    };
-    if (m instanceof MeshStandardMaterial) {
-      m.map = swap(m.map, s.albedo, true);
-      m.normalMap = swap(m.normalMap, s.normal, false);
-      const orm = swap(m.aoMap, s.orm, false);
-      m.aoMap = m.roughnessMap = m.metalnessMap = orm;
-    } else if (m instanceof MeshLambertMaterial) m.map = swap(m.map, s.albedo, true);
+    const std = m instanceof MeshStandardMaterial;
+    const maps: Texture[] = [tex(s.albedo, s.size, true, this.maxAniso)];
+    if (std) maps.push(tex(s.normal, s.size, false, this.maxAniso), tex(s.orm, s.size, false, this.maxAniso));
+    this.pending.push({ m, maps, uploaded: 0 });
+  }
+  private pending: { m: Material; maps: Texture[]; uploaded: number }[] = [];
+
+  /** Call once per rendered frame. */
+  pump(renderer: { initTexture(t: Texture): void }): void {
+    const job = this.pending[0];
+    if (!job || this.disposed) return;
+    if (job.uploaded < job.maps.length) { renderer.initTexture(job.maps[job.uploaded++]); return; }
+    this.pending.shift();
+    const old: (Texture | null)[] = [];
+    if (job.m instanceof MeshStandardMaterial) {
+      old.push(job.m.map, job.m.normalMap, job.m.aoMap);
+      job.m.map = job.maps[0]; job.m.normalMap = job.maps[1]; job.m.aoMap = job.m.roughnessMap = job.m.metalnessMap = job.maps[2];
+    } else if (job.m instanceof MeshLambertMaterial) { old.push(job.m.map); job.m.map = job.maps[0]; }
+    this.textures.push(...job.maps);
+    for (const o of old) if (o) { o.dispose(); this.textures = this.textures.filter((x) => x !== o); }
   }
 
   private patch(m: Material, kind: TexKind | null, bake = true): void {
@@ -182,6 +194,7 @@ export class MaterialLibrary {
 
   dispose(): void {
     this.disposed = true;
+    this.pending.forEach((j) => j.maps.forEach((t) => t.dispose())); this.pending = [];
     this.mats.forEach((m) => m.dispose());
     this.textures.forEach((t) => t.dispose());
     this.lamp.dispose();

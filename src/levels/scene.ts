@@ -11,13 +11,16 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { LevelSim, type SimEvent, type SimOptions, type SimSnapshot } from './sim';
 import { EntityVisuals } from './entityVisuals';
+import { buildBody, buildStick, type Body } from '../entities/body';
+import { planClues, type Clue } from '../gen/clues';
+import { buildClues, loadHandFont, type ClueVisuals } from './clueArt';
 import { SceneFx } from './fx';
 import { buildHubObjects, hubInteractables, type HubState } from './hubObjects';
 import { buildTestProps, type PropSet } from './props';
 import { ChunkStreamer } from '../gen/chunks';
 import { type ChunkData, type MatKey, type LightDef, LAMP_W, LAMP_D, levelLights } from '../gen/mesher';
 import { bakeLighting } from '../render/bake';
-import { createSurfaceShared, setBake, type SurfaceShared } from '../render/surface';
+import { createSurfaceShared, patchSurface, setBake, type SurfaceShared } from '../render/surface';
 import { LightPool, flickerAt } from '../render/lights';
 import { Dust } from '../render/atmosphere';
 import { MaterialLibrary } from '../render/materials';
@@ -34,6 +37,8 @@ import { itemDef } from '../systems/items';
 interface ChunkVis { group: Group; lamps: InstancedMesh | null; lampDefs: ChunkData['lights'] }
 
 const LAMP_GEO = new BoxGeometry(LAMP_W, 0.022, LAMP_D);
+/** Flashlight intensity (candela); ceiling lamps are 9. */
+const FLASH_CD = 26;
 
 /** Flashlight cookie: hot centre, a soft reflector ring, dark rings and slight lens grime. */
 function flashCookie(): CanvasTexture {
@@ -97,6 +102,9 @@ export class LevelScene {
   private surface: SurfaceShared = createSurfaceShared();
   private bakeLamps: LightDef[] = [];
   private viewmodel: Viewmodel | null = null;
+  private warm: Body[] = [];
+  private clues: Clue[] = [];
+  private clueVis: ClueVisuals | null = null;
 
   constructor(private svc: Services, readonly def: LevelDef, readonly seed: number, readonly difficulty: DifficultyId = 'normal', private tierOverride?: TierDef,
     private opts: { hub?: HubState; sim?: SimOptions; snapshot?: SimSnapshot; genParams?: Record<string, unknown> } = {}) {}
@@ -145,7 +153,7 @@ export class LevelScene {
     if (tier.dust > 0 && st.dust) { this.dust = new Dust(tier.dust, look.dust); this.dust.addTo(this.scene); }
 
     // flashlight (spot light parented to the scene, positioned each frame at the camera)
-    this.flash = new SpotLight(0xfff1d6, 40, 26, 0.5, 0.55, 1.6);
+    this.flash = new SpotLight(0xfff1d6, FLASH_CD, 26, 0.5, 0.55, 1.6);
     this.flash.castShadow = shadowLights > 0;
     if (this.flash.castShadow) { this.flash.map = flashCookie(); this.extras.push(this.flash.map); } // projected beam pattern (needs the shadow map)
     this.flash.shadow.camera.near = 0.1;
@@ -178,10 +186,46 @@ export class LevelScene {
     this.sim.player.holdCrouchToggle = st.holdToggleCrouch === 'toggle';
     this.sim.player.holdSprintToggle = st.holdToggleSprint === 'toggle';
     svc.gfx.applyLook(look);
+    progress(0.95, 'Compiling shaders');
+    await this.prewarm();
     svc.gfx.resetExposure();
     this.startAudio();
     progress(1, 'Ready');
     bus.emit('level:loaded', { id: def.id, seed: this.seed });
+  }
+
+  /**
+   * Hitch killer: build one body of every creature this level can spawn (fills the geometry cache) and
+   * a sample of every surface material, compile all programs (parallel where supported), then render a
+   * couple of frames behind the loading screen so shadow/skinning variants exist too. The warm bodies
+   * stay (hidden) for the level's lifetime so their programs are never released and recompiled.
+   */
+  private async prewarm(): Promise<void> {
+    const gfx = this.svc.gfx, cam = gfx.camera, tier = this.tier;
+    const ids = new Set<string>(this.plan.entitySlots.map((s) => s.entity ?? (s.role === 'nest' ? 'hound' : 'stick')));
+    if (this.plan.ruleEntity) ids.add(this.plan.ruleEntity === 'partygoers' ? 'partygoer' : this.plan.ruleEntity);
+    ids.add('stick'); ids.add('hound'); if (this.def.id !== 'testroom') ids.add('companion');
+    const bodies: Body[] = [...ids].map((id) => buildBody(id, tier.level));
+    bodies.push(buildStick(tier.level, true)); // hallucination ghost (transparent variant)
+    const holder = new Group();
+    const samples: Mesh[] = [];
+    const quad = new PlaneGeometry(0.3, 0.3);
+    for (const k of ['wall0', 'wall1', 'wall2', 'wall3', 'floor', 'floorTile', 'ceiling', 'trim', 'decal', 'tbar'] as MatKey[]) if (this.lib.has(k)) samples.push(new Mesh(quad, this.lib.get(k)));
+    this.extras.push(quad);
+    const p = this.sim.player;
+    p.apply(cam, 1, 0, 0); cam.updateMatrixWorld();
+    cam.getWorldDirection(this.fwd);
+    bodies.forEach((b, i) => { b.group.position.set(cam.position.x + this.fwd.x * 3 + (i - bodies.length / 2) * 0.6, 0, cam.position.z + this.fwd.z * 3); b.update(1, 0, 1 / 60, false, false); holder.add(b.group); });
+    samples.forEach((m, i) => { m.position.set(cam.position.x + this.fwd.x * 2 + (i - samples.length / 2) * 0.32, 1.2, cam.position.z + this.fwd.z * 2); m.lookAt(cam.position); holder.add(m); });
+    this.scene.add(holder);
+    this.lights.update(cam.position.x, cam.position.y, cam.position.z, 0, 1);
+    try { await gfx.renderer.compileAsync(this.scene, cam); } catch { /* older drivers: the frames below compile synchronously */ }
+    this.flash.intensity = FLASH_CD; // compile the flashlight-on path (shadow + cookie) as well
+    gfx.setScene(this.scene); gfx.render(1 / 60); gfx.render(1 / 60);
+    this.flash.intensity = 0;
+    for (const b of bodies) b.group.visible = false;
+    samples.forEach((m) => m.removeFromParent());
+    this.warm = bodies;
   }
 
   /** Reflection capture: render the real level around the spawn into a cube map and prefilter it (PMREM). */
@@ -292,6 +336,15 @@ export class LevelScene {
       const wheel = new Mesh(new TorusGeometry(0.28, 0.035, 8, 16), new MeshStandardMaterial({ color: 0xa83a2a, roughness: 0.5, metalness: 0.6 })); wheel.rotation.x = Math.PI / 2; wheel.position.y = 1.15; g.add(wheel);
       scene.add(g); this.valveMeshes.set(pt.id, wheel);
       this.extras.push({ dispose: () => { stem.geometry.dispose(); (stem.material as MeshStandardMaterial).dispose(); wheel.geometry.dispose(); (wheel.material as MeshStandardMaterial).dispose(); } });
+    }
+    // scrawled clue notes left by earlier wanderers (find this / avoid that, with a crude drawing)
+    this.clues = planClues(plan);
+    if (this.clues.length) {
+      await loadHandFont();
+      this.clueVis = buildClues(this.clues, tier.materials === 'lambert', (m) => patchSurface(m, this.surface, { grime: 0, stain: 0, wet: 0, scale: 1, bake: true }));
+      scene.add(this.clueVis.group);
+      const prev = sim.extra, vis = this.clueVis;
+      sim.extra = () => [...(prev?.() ?? []), ...this.clues.map((c) => ({ kind: 'custom' as const, x: c.x, z: c.z, label: 'Read the scrap of paper', ref: { type: 'clue', id: c.id, text: c.text, img: () => vis.image(c.id) } }))];
     }
     if (plan.hub) {
       this.hubObj = buildHubObjects(scene, plan, this.opts.hub!);
@@ -442,11 +495,13 @@ export class LevelScene {
     this.streamer.update(cam.position.x, cam.position.z);
     this.lights.update(cam.position.x, cam.position.y, cam.position.z, this.time, dt);
     this.surface.uPoolR.value = this.lights.coverRadius;
+    this.lib.pump(svc.gfx.renderer);
     this.dust?.update(this.time, cam.position.x, cam.position.z);
     this.props?.update(this.time);
     // flashlight follows the camera with a little lag-free offset
     const flashOut = this.sim.inv.has('flashlight') && this.sim.flash.on ? this.sim.flash.output(this.time) : 0;
-    this.flash.visible = flashOut > 0.01; this.flash.intensity = 40 * flashOut;
+    this.flash.intensity = FLASH_CD * flashOut; // never toggle `visible` on lights: it recompiles every shader
+    this.flash.shadow.autoUpdate = flashOut > 0.01;
     const hasFlash = this.sim.inv.has('flashlight');
     cam.updateMatrixWorld();
     this.viewmodel?.update(dt, hasFlash && !this.sim.hidden, flashOut, p.yaw, p.pitch, Math.min(1, p.speed / 3), this.time);
@@ -534,6 +589,8 @@ export class LevelScene {
   dispose(): void {
     document.body.classList.remove('hiding');
     this.ev.dispose(); this.hubObj?.dispose(); this.viewmodel?.dispose();
+    this.warm.forEach((b) => b.dispose()); this.warm = [];
+    this.clueVis?.dispose();
     for (const h of this.humHandles) h.stop(0.3);
     for (const k of [...this.chunks.keys()]) this.removeChunk(k);
     this.propMeshes.forEach((m) => { m.dispose(); m.removeFromParent(); });

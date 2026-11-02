@@ -34,8 +34,8 @@ export interface TierDef {
 }
 
 export const TIERS: Record<TierId, TierDef> = {
-  ultra:  { id: 'ultra',  level: 4, label: 'Ultra',  resolution: 1,    maxPixelRatio: 2,   lights: 10, shadowLights: 2, shadowMap: 2048, textureSize: 2048, post: 'full',  bloom: true,  ssao: true,  ssaoScale: 1,    dust: 1500, drawDistance: 70, materials: 'standard', fpsTarget: 60, frameBudgetMs: 16.7 },
-  high:   { id: 'high',   level: 3, label: 'High',   resolution: 1,    maxPixelRatio: 1.5, lights: 8,  shadowLights: 2, shadowMap: 1024, textureSize: 1024,  post: 'full',  bloom: true,  ssao: true,  ssaoScale: 0.5,  dust: 800,  drawDistance: 60, materials: 'standard', fpsTarget: 60, frameBudgetMs: 16.7 },
+  ultra:  { id: 'ultra',  level: 4, label: 'Ultra',  resolution: 1,    maxPixelRatio: 2,   lights: 10, shadowLights: 2, shadowMap: 1024, textureSize: 2048, post: 'full',  bloom: true,  ssao: true,  ssaoScale: 1,    dust: 1500, drawDistance: 70, materials: 'standard', fpsTarget: 60, frameBudgetMs: 16.7 },
+  high:   { id: 'high',   level: 3, label: 'High',   resolution: 1,    maxPixelRatio: 1.5, lights: 8,  shadowLights: 2, shadowMap: 512,  textureSize: 1024,  post: 'full',  bloom: true,  ssao: true,  ssaoScale: 0.5,  dust: 800,  drawDistance: 60, materials: 'standard', fpsTarget: 60, frameBudgetMs: 16.7 },
   medium: { id: 'medium', level: 2, label: 'Medium', resolution: 0.85, maxPixelRatio: 1.25, lights: 5, shadowLights: 1, shadowMap: 512,  textureSize: 512,  post: 'light', bloom: true,  ssao: false, ssaoScale: 0.5,  dust: 300,  drawDistance: 50, materials: 'standard', fpsTarget: 60, frameBudgetMs: 16.7 },
   low:    { id: 'low',    level: 1, label: 'Low',    resolution: 0.7,  maxPixelRatio: 1,   lights: 3,  shadowLights: 0, shadowMap: 256,  textureSize: 256,  post: 'light', bloom: false, ssao: false, ssaoScale: 0.5,  dust: 80,   drawDistance: 40, materials: 'lambert',  fpsTarget: 45, frameBudgetMs: 22 },
   potato: { id: 'potato', level: 0, label: 'Potato', resolution: 0.5,  maxPixelRatio: 1,   lights: 2,  shadowLights: 0, shadowMap: 256,  textureSize: 128,  post: 'none',  bloom: false, ssao: false, ssaoScale: 0.5,  dust: 0,    drawDistance: 28, materials: 'lambert',  fpsTarget: 30, frameBudgetMs: 33.3 },
@@ -53,6 +53,8 @@ export interface BenchResult { avgFrameMs: number; frames: number }
 
 const SOFTWARE_GPU = /swiftshader|llvmpipe|software|basic render/i;
 const WEAK_GPU = /intel.*(hd|uhd) graphics (?:[2-5]\d{2}\b|4000)|mali-[34]|adreno \(?(?:[1-4]\d{2})|powervr/i;
+/** Integrated GPUs that run Medium well but not the full post chain (Surface / ultrabooks). */
+const MID_GPU = /iris|intel.*arc.*graphics|intel\(r\) graphics|radeon\(tm\) graphics|vega \d|adreno \(?[5-6]\d{2}|mali-g[5-7]/i;
 
 /** Choose a tier from a short benchmark (frame time at High-ish detail) and hardware hints. */
 export function pickTier(b: BenchResult, hw: HardwareInfo): TierId {
@@ -63,6 +65,7 @@ export function pickTier(b: BenchResult, hw: HardwareInfo): TierId {
   let cap = 4;
   if (SOFTWARE_GPU.test(hw.gpu)) cap = 0;
   else if (WEAK_GPU.test(hw.gpu)) cap = 1;
+  else if (MID_GPU.test(hw.gpu)) cap = 2;
   if (hw.mobile) cap = Math.min(cap, 2);
   if (hw.memoryGb > 0 && hw.memoryGb <= 2) cap = Math.min(cap, 1);
   if (hw.cores > 0 && hw.cores <= 2) cap = Math.min(cap, 2);
@@ -100,9 +103,12 @@ export class AdaptiveQuality {
 
   setTier(t: TierId): void { this.tier = t; this.scale = 1; this.slow = this.fast = this.longSlow = this.longFast = 0; this.cooldown = 120; }
 
-  /** @param frameMs wall-clock time of the last frame. */
+  /**
+   * @param frameMs wall-clock time of the last frame.
+   * Dynamic resolution runs on every tier (a manually chosen tier still has to hold its frame rate);
+   * tier changes are only made or offered when the tier is on Auto.
+   */
   update(frameMs: number): AdaptAction {
-    if (!this.auto) return null;
     if (this.cooldown > 0) { this.cooldown--; return null; }
     const budget = TIERS[this.tier].frameBudgetMs;
     if (frameMs > budget * 1.2) { this.slow++; this.fast = 0; this.longSlow++; this.longFast = 0; }
@@ -116,7 +122,7 @@ export class AdaptiveQuality {
       return { kind: 'scale', scale: this.scale };
     }
     // already at the floor and still slow for ~6 s: drop a tier (also covers thermal throttling)
-    if (this.scale <= this.minScale + 1e-6 && this.longSlow >= 360) {
+    if (this.auto && this.scale <= this.minScale + 1e-6 && this.longSlow >= 360) {
       const i = TIER_ORDER.indexOf(this.tier);
       this.longSlow = 0;
       if (i > 0) return { kind: 'tierDown', to: TIER_ORDER[i - 1] };
@@ -127,7 +133,7 @@ export class AdaptiveQuality {
       this.fast = 0; this.cooldown = 30;
       return { kind: 'scale', scale: this.scale };
     }
-    if (this.longFast >= 1800 && this.scale >= 1) {
+    if (this.auto && this.longFast >= 1800 && this.scale >= 1) {
       this.longFast = 0;
       const i = TIER_ORDER.indexOf(this.tier);
       if (i < TIER_ORDER.length - 1) return { kind: 'offerUp', to: TIER_ORDER[i + 1] };

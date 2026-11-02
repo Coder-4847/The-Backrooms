@@ -5,7 +5,7 @@
                 input/ (actions, pure logic, keyboard+mouse+gamepad manager, touch), collision (spatial hash), player, game (orchestrator),
                 debug + debugCommands, perf (in-browser flythrough), services (interface handed to scenes)
 - `src/gen`     seeded RNG, `types.ts` (LevelPlan/LevelDef/LevelLook), `graph.ts` (BSP rooms -> graph -> critical path -> locks/keys -> waypoints
-                -> nav), `validate.ts`, `waypoints.ts`, `mesher.ts` (pure chunk geometry+colliders+lights), `chunks.ts` (streaming),
+                -> nav), `validate.ts`, `waypoints.ts`, `clues.ts` (handwritten clue notes from level content), `mesher.ts` (pure chunk geometry+colliders+lights), `chunks.ts` (streaming),
                 `pool.ts` + `gen.worker.ts` + `handlers.ts` (workers with inline fallback), `textures.ts` (procedural PBR: wallpaper, carpet, concrete, tile, metal, acoustic ceiling, decals, diffuser, macro variation)
 - `src/levels`  `registry.ts` (the single `LEVELS` table) + `campaign.ts` (the 25-entry table the hub shows), `level0.ts`, `hub.ts` (procedural tunnel + wings),
                 `sim.ts` (headless gameplay core: player, items, stats, light, noise, director, entities, hiding), `bot.ts` (autopilot),
