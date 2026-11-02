@@ -118,6 +118,23 @@ try {
   await ev(() => { const g = (window as any).__game; const L = g.level; L.sim.ew.entities.length = 0; const pz = L.plan.puzzles[0]; const pt = pz.parts[0]; L.sim.player.place(pt.pos.x + 0.9, pt.pos.z); });
   await page.keyboard.press('KeyE'); await page.waitForTimeout(800);
   check('flipping a breaker relights a section', await ev(() => { const L = (window as any).__game.level; return L.sim.keys.has(L.plan.puzzles[0].lock); }));
+  // ---- Act 3: open field, cold, train schedule, the chase, the finale ----
+  const wf = await startL('wheatfield');
+  check('Wheat Field is outdoors with a compass', wf.id === 'wheatfield' && (await ev(() => { const L = (window as any).__game.level; return L.plan.open && L.plan.rooms.some((r: any) => r.open) && L.plan.items.some((i: any) => i.item === 'compass'); })));
+  const ar = await startL('arctic');
+  await ev(() => { const L = (window as any).__game.level; L.sim.ew.entities.length = 0; const r = L.plan.rooms.find((q: any) => !L.plan.cold.warm.includes(q.id) && !q.open && q.w > 6); L.sim.player.place(r.x + r.w / 2, r.z + r.d / 2); });
+  await page.waitForTimeout(3000);
+  check('Arctic: warmth drains and the WARM bar shows', (await ev(() => (window as any).__game.level.sim.stats.warmth)) < 100 && (await page.locator('.vitals').innerText()).includes('WARM'), JSON.stringify(ar.ents));
+  const mt = await startL('metro');
+  check('Metro has a schedule and Wraiths', mt.id === 'metro' && (await ev(() => !!(window as any).__game.level.plan.schedule)) && mt.ents.includes('wraith'));
+  const ch = await startL('chase');
+  check('the chase starts with a Pursuer', ch.ents.includes('pursuer'));
+  await startL('finale');
+  await ev(() => { const L = (window as any).__game.level; const a = L.sim.ew.entities.find((e: any) => e.def.id === 'architect'); L.sim.ew.entities = L.sim.ew.entities.filter((e: any) => e === a); L.sim.player.place(a.x - 1.2, a.z); });
+  await page.keyboard.press('KeyE'); await page.waitForSelector('text=Take the exit key and leave');
+  check('the Architect offers the decision', true);
+  await page.click('text=Take the exit key and leave'); await page.waitForSelector('.paper');
+  check('an ending plays and is recorded', (await ev(() => (window as any).__game.profile.endings.length)) >= 1);
   check('no page errors', errors.length === 0, errors.slice(0, 3).join(' | '));
 } finally { await browser.close(); proc.kill(); }
 console.log(failed ? `\n${failed} check(s) failed` : '\nsmoke ok');
