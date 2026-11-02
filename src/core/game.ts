@@ -10,19 +10,19 @@ import { AudioEngine } from '../audio/engine';
 import { Sounds } from '../audio/sounds';
 import { Loop } from './loop';
 import { openBestStorage, requestPersistence } from './storage';
-import { SaveManager, newSlot, type Profile, type SlotData } from './save';
+import { SaveManager, type Profile, type SlotData } from './save';
 import { SettingsStore, fpsCapOf, type Settings } from './settings';
 import { InputManager } from './input/manager';
 import { bus } from './events';
 import { emptyFrame } from './input/logic';
 import { DIFFICULTIES, type DifficultyId } from './difficulty';
 import { LevelScene } from '../levels/scene';
-import { levelById, campaignLevels } from '../levels/registry';
-import { parseSeed, deriveSeed, randomSeedString } from '../gen/rng';
+import { levelById } from '../levels/registry';
 import { registerDebugCommands } from './debugCommands';
 import { runPerf } from './perf';
 import { debugEnabled, CommandRegistry } from './debug';
 import { Ui } from '../ui/ui';
+import { Flow } from './flow';
 import type { Services } from './services';
 
 const GRAPHICS_KEYS = new Set(['tier', 'resolutionScale', 'fov', 'drawDistance', 'shadowQuality', 'antialias', 'bloom', 'ssao', 'vhs', 'grain', 'dust', 'batterySaver']);
@@ -48,13 +48,15 @@ export class Game implements Services {
   adaptive!: AdaptiveQuality;
   debug = new CommandRegistry();
   currentSlot: SlotData | null = null;
+  flow!: Flow;
+  private canvasEl: HTMLCanvasElement;
   runStart = 0;
   fps = 0;
   private frameTimes: number[] = [];
   /** Perf harness hook: called every rendered frame with (dt seconds, frame ms). */
   perfHook: ((dt: number, frameMs: number) => void) | null = null;
 
-  constructor(_canvas: HTMLCanvasElement) {}
+  constructor(canvas: HTMLCanvasElement) { this.canvasEl = canvas; }
 
   audio = () => this.audioEngine;
   sounds = () => this.soundBank;
@@ -71,6 +73,7 @@ export class Game implements Services {
     g.pool = new WorkerPool();
     g.input = new InputManager(canvas, g.inputConfig(), document.getElementById('app')!);
     g.loop = new Loop({ update: (dt) => g.update(dt), render: (a, ms) => g.render(a, ms) });
+    g.flow = new Flow(g);
     g.ui = new Ui(g);
     registerDebugCommands(g);
     g.settings.subscribe((s, key) => g.onSettings(s, key));
@@ -169,20 +172,26 @@ export class Game implements Services {
     this.ui.showTitle();
   }
 
-  /** Start (or restart) a level. */
-  async startLevel(id: string, seedText: string | number, difficulty: DifficultyId, slot: SlotData | null = null): Promise<void> {
-    const def = levelById(id);
-    if (!def) throw new Error(`unknown level ${id}`);
-    this.state = 'loading';
+  // ---- flow delegates (see flow.ts) ----
+
+  startLevel(id: string, seedText: string | number, difficulty: DifficultyId, slot: SlotData | null = null): Promise<void> {
     this.currentSlot = slot;
-    this.ui.hideAllMenus();
-    this.ui.setLoading(true, def.name, 0);
+    return this.flow.startLevel(id, seedText, difficulty, { mode: 'campaign' });
+  }
+  newGame(slotNo: number, difficulty: DifficultyId, seedText: string): Promise<void> { return this.flow.newGame(slotNo, difficulty, seedText); }
+  resumeSlot(slot: SlotData): Promise<void> { return this.flow.resume(slot); }
+  startFromHub(index: number, o: Parameters<Flow['startFromHub']>[1]): Promise<void> { return this.flow.startFromHub(index, o); }
+  knownNotes(): string[] { return this.flow.knownNotes(); }
+
+  /** Show the loading screen and tear down the current scene. */
+  beginLoad(title: string): void {
+    this.state = 'loading';
+    this.ui.hideAllMenus(); this.ui.closePanel(); this.ui.setLoading(true, title, 0);
+    this.input.setGameplayActive(false);
     this.level?.dispose(); this.level = null;
-    const seed = typeof seedText === 'number' ? seedText : parseSeed(seedText);
-    const scene = new LevelScene(this, def, deriveSeed(seed, `level:${id}`), difficulty);
-    await scene.load((p, label) => this.ui.setLoading(true, def.name, p, label));
-    scene.onExit = () => void this.completeLevel();
-    scene.onCheckpoint = () => void this.autosave();
+  }
+
+  finishLoad(scene: LevelScene): void {
     this.level = scene;
     this.runStart = performance.now();
     this.ui.setLoading(false);
@@ -192,28 +201,23 @@ export class Game implements Services {
     this.ui.showHud(true);
   }
 
+  /** Small JPEG of the current view for the save slot card. */
+  thumbnail(): string | null {
+    try {
+      const src = this.canvasEl;
+      const c = document.createElement('canvas'); c.width = 192; c.height = 108;
+      c.getContext('2d')!.drawImage(src, 0, 0, 192, 108);
+      return c.toDataURL('image/jpeg', 0.6);
+    } catch { return null; }
+  }
+
   async autosave(): Promise<void> {
     if (!this.currentSlot || !this.settings.value.autosave) return;
     const s = this.currentSlot;
     s.playtime += (performance.now() - this.runStart) / 1000; this.runStart = performance.now();
+    if (this.level && this.flow.inHub) { s.inventory = this.level.sim.inv.toState(); s.stats = this.level.sim.stats.toSave(this.level.sim.player.stamina); }
     await this.saves.saveSlot(s);
     bus.emit('save:written', { slot: s.slot });
-  }
-
-  async completeLevel(): Promise<void> {
-    if (!this.level) return;
-    const L = this.level;
-    if (this.currentSlot) {
-      const t = L.sim.time;
-      const levels = campaignLevels();
-      SaveManager.completeLevel(this.currentSlot, Math.max(0, levels.findIndex((l) => l.id === L.def.id)), L.def.id, t, Math.max(levels.length, 2));
-      await this.autosave();
-    }
-    bus.emit('toast', { text: 'Level complete' });
-    if (this.soundBank && this.audioEngine) this.soundBank.warp(this.audioEngine.flat('sfx', 0.2));
-    this.gfx.glitch = 1;
-    await new Promise((r) => setTimeout(r, 900));
-    await this.showMenu();
   }
 
   pause(on: boolean): void {
@@ -225,21 +229,19 @@ export class Game implements Services {
     if (!on) this.input.requestLock();
   }
 
-  async newGame(slotNo: number, difficulty: DifficultyId, seedText: string): Promise<void> {
-    const seed = seedText.trim() || randomSeedString();
-    const slot = newSlot(slotNo, difficulty, seed);
-    await this.saves.saveSlot(slot);
-    const first = campaignLevels()[0] ?? levelById('placeholder')!;
-    await this.startLevel(first.id, seed, difficulty, slot);
-  }
-
   // ---- loop ----
 
   update(dt: number): void {
     const f = this.input.frame(dt);
     if (f.pressed.Console && debugEnabled()) { this.ui.toggleDebug(); return; }
+    if (this.state === 'playing' && this.ui.panelOpen) {
+      if (f.pressed.Pause || f.pressed.Inventory || f.pressed.Journal) this.ui.closePanel();
+      return;
+    }
     if (this.state === 'playing') {
       if (f.pressed.Pause) { this.pause(true); return; }
+      if (f.pressed.Inventory && this.level) { this.flow.openInventory(); return; }
+      if (f.pressed.Journal) { this.flow.openJournal(); return; }
       if (this.ui.debugOpen) { this.level?.update(dt, emptyFrame()); return; }
       this.level?.update(dt, f);
       this.ui.inGame(this.level);

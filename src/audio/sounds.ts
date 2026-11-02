@@ -129,4 +129,64 @@ export class Sounds {
     const g = c.createGain(); g.gain.setValueAtTime(0.25, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
     o.connect(f).connect(g).connect(out); o.start(t); o.stop(t + dur + 0.05);
   }
+
+  /** Hound growl: FM-modulated low saw through moving formant filters (tell before a lunge). */
+  growl(out: AudioNode, dur = 1.2): void {
+    const c = this.ctx, t = c.currentTime;
+    const car = c.createOscillator(); car.type = 'sawtooth'; car.frequency.setValueAtTime(62, t); car.frequency.linearRampToValueAtTime(48, t + dur);
+    const mod = c.createOscillator(); const mg = c.createGain(); mod.frequency.value = 23; mg.gain.value = 40; mod.connect(mg).connect(car.frequency);
+    const f1 = c.createBiquadFilter(); f1.type = 'bandpass'; f1.frequency.setValueAtTime(300, t); f1.frequency.linearRampToValueAtTime(520, t + dur * 0.6); f1.Q.value = 4;
+    const f2 = c.createBiquadFilter(); f2.type = 'bandpass'; f2.frequency.value = 900; f2.Q.value = 5;
+    const g = c.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.5, t + 0.2); g.gain.linearRampToValueAtTime(0.35, t + dur * 0.8); g.gain.linearRampToValueAtTime(0, t + dur);
+    const n = this.a.noiseSource(); const ng = c.createGain(); ng.gain.value = 0.12; const nf = c.createBiquadFilter(); nf.type = 'bandpass'; nf.frequency.value = 1400; nf.Q.value = 1.5;
+    car.connect(f1).connect(g); car.connect(f2).connect(g); n.connect(nf).connect(ng).connect(g); g.connect(out);
+    car.start(t); mod.start(t); n.start(t, 0, dur); car.stop(t + dur + 0.05); mod.stop(t + dur + 0.05);
+    this.a.caption('[something growls]', dur * 1000);
+  }
+
+  /** The Stick's tell: rising metallic ticking over a thin drone. */
+  stickTell(out: AudioNode, dur = 1.6): void {
+    const c = this.ctx, t = c.currentTime;
+    const o = c.createOscillator(); o.type = 'sine'; o.frequency.setValueAtTime(70, t); o.frequency.exponentialRampToValueAtTime(190, t + dur);
+    const g = c.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.25, t + dur); g.gain.linearRampToValueAtTime(0, t + dur + 0.1);
+    o.connect(g).connect(out); o.start(t); o.stop(t + dur + 0.15);
+    for (let i = 0; i < 9; i++) {
+      const tt = t + (i / 9) * dur * (0.55 + i * 0.05);
+      const k = c.createOscillator(); k.type = 'square'; k.frequency.value = 1800 + (i % 3) * 300;
+      const kg = c.createGain(); kg.gain.setValueAtTime(0.0001, tt); kg.gain.linearRampToValueAtTime(0.05 + i * 0.008, tt + 0.003); kg.gain.exponentialRampToValueAtTime(0.0002, tt + 0.04);
+      k.connect(kg).connect(out); k.start(tt); k.stop(tt + 0.05);
+    }
+    this.a.caption('[ticking, getting closer]', dur * 1000);
+  }
+
+  /** Breathy whisper: band-passed noise with a drifting formant. Used for low-sanity hallucinations. */
+  whisper(out: AudioNode, dur = 1.8): void {
+    const c = this.ctx, t = c.currentTime;
+    const n = this.a.noiseSource(); const f = c.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 6; f.frequency.setValueAtTime(1500, t); f.frequency.linearRampToValueAtTime(2400, t + dur);
+    const g = c.createGain(); g.gain.setValueAtTime(0, t);
+    for (let i = 0; i < 5; i++) { g.gain.linearRampToValueAtTime(0.3 * Math.random() + 0.05, t + (i + 0.5) * (dur / 5)); g.gain.linearRampToValueAtTime(0.01, t + (i + 1) * (dur / 5)); }
+    n.connect(f).connect(g).connect(out); n.start(t, Math.random(), dur);
+    this.a.caption('[whispering]', dur * 1000);
+  }
+
+  thud(out: AudioNode, level = 0.6): void {
+    const c = this.ctx, t = c.currentTime;
+    const o = c.createOscillator(); const g = c.createGain();
+    o.frequency.setValueAtTime(120, t); o.frequency.exponentialRampToValueAtTime(34, t + 0.25);
+    g.gain.setValueAtTime(level, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+    o.connect(g).connect(out); o.start(t); o.stop(t + 0.32);
+    const n = this.a.noiseSource(); const ng = c.createGain(); ng.gain.setValueAtTime(level * 0.5, t); ng.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+    const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 900; n.connect(lp).connect(ng).connect(out); n.start(t, 0, 0.15);
+  }
+
+  /** Short voice blip for dialogue (pitch per speaker). */
+  blip(freq: number): void {
+    const c = this.ctx, t = c.currentTime;
+    const out = this.a.flat('voice');
+    const o = c.createOscillator(); o.type = 'square'; const f = freq * (0.9 + Math.random() * 0.3);
+    o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(f * 0.85, t + 0.06);
+    const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1400;
+    const g = c.createGain(); g.gain.setValueAtTime(0.08, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.07);
+    o.connect(lp).connect(g).connect(out); o.start(t); o.stop(t + 0.08);
+  }
 }

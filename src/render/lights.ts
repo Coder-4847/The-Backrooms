@@ -22,6 +22,9 @@ export class LightPool {
   private color = new Color();
   all: LightDef[] = [];
   reduceFlicker = false;
+  /** Seconds of Director-triggered flicker burst remaining. */
+  burstT = 0;
+  burst(seconds: number): void { if (!this.reduceFlicker) this.burstT = seconds; }
 
   constructor(private scene: Scene, count: number, shadowCount: number, shadowMap: number, distance = 16) {
     for (let i = 0; i < count; i++) {
@@ -44,6 +47,8 @@ export class LightPool {
   update(x: number, y: number, z: number, t: number, dt: number, baseIntensity = 9): void {
     const n = this.slots.length;
     if (!n) return;
+    this.burstT = Math.max(0, this.burstT - dt);
+    const burst = this.burstT > 0 ? (Math.sin(t * 53) * Math.sin(t * 19) > -0.2 ? 1 : 0.1) : 1;
     // pick the n nearest non-broken defs (selection by repeated min; n is small)
     const picked: LightDef[] = [];
     const used = new Set<LightDef>();
@@ -78,7 +83,7 @@ export class LightPool {
         s.light.position.set(d.x, d.y - 0.15, d.z);
         this.color.setHex(d.color);
         s.light.color.copy(this.color);
-        s.light.intensity = baseIntensity * d.intensity * flickerAt(d, t, this.reduceFlicker) * s.fade;
+        s.light.intensity = baseIntensity * d.intensity * flickerAt(d, t, this.reduceFlicker) * s.fade * burst;
         s.light.visible = s.fade > 0.001;
       } else { s.light.intensity = 0; s.light.visible = false; }
     }

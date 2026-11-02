@@ -84,6 +84,19 @@ export class StaticWorld {
     return hit;
   }
 
+  /** Is any wall between two points? (line-of-sight test; samples every 0.1 m so thin walls are never skipped) */
+  segmentBlocked(x0: number, z0: number, x1: number, z1: number): boolean {
+    const len = Math.hypot(x1 - x0, z1 - z0);
+    const n = Math.max(1, Math.ceil(len / 0.1));
+    for (let i = 1; i < n; i++) {
+      const x = x0 + ((x1 - x0) * i) / n, z = z0 + ((z1 - z0) * i) / n;
+      const list = this.cells.get(cellKey(Math.floor(x / CELL), Math.floor(z / CELL)));
+      if (!list) continue;
+      for (const b of list) if (x >= b.x0 && x <= b.x1 && z >= b.z0 && z <= b.z1) return true;
+    }
+    return false;
+  }
+
   /** Point-in-any-box test (used by validators/tests to prove spawns are not inside walls). */
   overlapsCircle(x: number, z: number, r: number): boolean {
     const p = { x, z };

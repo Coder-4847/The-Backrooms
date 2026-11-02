@@ -5,10 +5,15 @@
 import type { LevelDef } from '../gen/types';
 import { placeholder } from './placeholder';
 import { testroom } from './testroom';
+import { level0 } from './level0';
 
-export const LEVELS: LevelDef[] = [testroom, placeholder];
+export const LEVELS: LevelDef[] = [level0, testroom, placeholder];
 
 export const levelById = (id: string): LevelDef | undefined => LEVELS.find((l) => l.id === id);
 
 /** Campaign order = non-dev levels in registration order. */
 export const campaignLevels = (): LevelDef[] => LEVELS.filter((l) => !l.dev);
+
+export { CAMPAIGN, campaignIndex } from './campaign';
+/** A campaign level is playable once its generator is registered. */
+export const isImplemented = (id: string): boolean => LEVELS.some((l) => l.id === id && !l.dev);

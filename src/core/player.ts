@@ -29,6 +29,10 @@ export class Player {
   private crouchToggle = false;
   private sprintToggle = false;
   reduceShake = false;
+  /** Stamina regeneration multiplier (backpack weight lowers it). */
+  regenScale = 1;
+  /** -1 (lean left) .. 1 (lean right), smoothed. */
+  lean = 0;
   holdCrouchToggle = false; holdSprintToggle = false;
   onStep: ((sprint: boolean, crouch: boolean) => void) | null = null;
   private fwd = new Vector3(); private right = new Vector3();
@@ -66,7 +70,7 @@ export class Player {
     const moving = wl > 0.1;
     this.exhausted = this.exhausted ? this.stamina < 25 : this.stamina <= 0;
     this.sprinting = this.sprintToggle && moving && !this.crouching && !this.exhausted && f.moveY > 0.3;
-    this.stamina = Math.max(0, Math.min(100, this.stamina + (this.sprinting ? -14 : moving ? 6 : 12) * dt));
+    this.stamina = Math.max(0, Math.min(100, this.stamina + (this.sprinting ? -14 : (moving ? 6 : 12) * this.regenScale) * dt));
 
     const target = this.crouching ? PLAYER.crouch : this.sprinting ? PLAYER.sprint : PLAYER.walk;
     const accel = 1 - Math.exp(-10 * dt);
@@ -75,6 +79,8 @@ export class Player {
     world.move(this, this.vx * dt, this.vz * dt, PLAYER.radius);
     this.speed = Math.hypot(this.vx, this.vz);
 
+    const leanT = (f.down.PeekRight ? 1 : 0) - (f.down.PeekLeft ? 1 : 0);
+    this.lean += (leanT - this.lean) * (1 - Math.exp(-10 * dt));
     const eyeT = this.crouching ? PLAYER.eyeCrouch : PLAYER.eye;
     this.eye += (eyeT - this.eye) * (1 - Math.exp(-12 * dt));
     this.bob += this.speed * dt * (this.sprinting ? 1.5 : 1.15);
@@ -90,8 +96,10 @@ export class Player {
     const bobAmp = this.reduceShake ? 0 : Math.min(1, this.speed / 3) * (this.sprinting ? 0.055 : 0.032);
     const shake = this.reduceShake ? 0 : fear * 0.012;
     const y = this.noclip ? this.flyY : this.eye + Math.abs(Math.sin(this.bob * 2.4)) * bobAmp - bobAmp * 0.5;
-    cam.position.set(x + Math.sin(t * 31) * shake, y + Math.cos(t * 27) * shake, z);
+    const lx = Math.cos(this.yaw) * this.lean * 0.32, lz = -Math.sin(this.yaw) * this.lean * 0.32;
+    cam.position.set(x + lx + Math.sin(t * 31) * shake, y + Math.cos(t * 27) * shake - Math.abs(this.lean) * 0.08, z + lz);
     this.euler.set(this.pitch + (this.reduceShake ? 0 : Math.sin(this.bob * 2.4) * bobAmp * 0.18), this.yaw + (this.reduceShake ? 0 : Math.cos(this.bob * 1.2) * bobAmp * 0.25), 0);
+    this.euler.z = -this.lean * 0.14;
     cam.quaternion.setFromEuler(this.euler);
     void this.right;
   }

@@ -95,6 +95,16 @@ export function validatePlan(def: Pick<LevelDef, 'targetSeconds'>, plan: LevelPl
     if (s.room === plan.spawn.room) fail('entity slot in spawn room');
   }
 
+  // hiding spots: inside their room, clear of doorways, waypoints and items (so they never block anything)
+  for (const h of plan.hides ?? []) {
+    const r = byId.get(h.room);
+    if (!r || !inRoom(r, h.pos, 0.4)) fail(`hide ${h.id} outside its room`);
+    if (plan.connections.some((c) => Math.hypot(c.door.x - h.pos.x, c.door.z - h.pos.z) < 2)) fail(`hide ${h.id} too close to a door`);
+    if (plan.waypoints.some((w) => Math.hypot(w.pos.x - h.pos.x, w.pos.z - h.pos.z) < 1.5)) fail(`hide ${h.id} too close to a waypoint`);
+    if (plan.items.some((i) => Math.hypot(i.pos.x - h.pos.x, i.pos.z - h.pos.z) < 1)) fail(`hide ${h.id} on top of an item`);
+  }
+  for (const s of plan.entitySlots) if (s.entity && s.role === 'nest' && (plan.criticalPath.slice(0, 2).includes(s.room))) fail('entity nest on the first stretch of the route');
+
   // nav graph
   const N = plan.nav.nodes;
   for (const e of plan.nav.edges) if (!N[e.a] || !N[e.b] || !(e.cost >= 0)) fail('nav edge invalid');

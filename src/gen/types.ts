@@ -32,8 +32,19 @@ export interface Connection {
 export type ItemKind = 'key' | 'tool' | 'loot' | 'note';
 export interface ItemSpawn { id: string; item: string; kind: ItemKind; room: number; pos: Vec2; unlocks?: string }
 export interface Waypoint { room: number; pos: Vec2; /** 0..1 progress along the critical path. */ t: number }
-export interface EntitySlot { room: number; pos: Vec2; role: 'nest' | 'patrol' | 'ambush' }
-export interface NavNode { id: number; pos: Vec2; room: number }
+export interface EntitySlot { room: number; pos: Vec2; role: 'nest' | 'patrol' | 'ambush'; /** entity def id (levels with an ecology set it) */ entity?: string }
+export interface HubData {
+  /** Doors in campaign order; `yaw` is the direction a player faces to look at the door from the tunnel. */
+  doors: { index: number; room: number; pos: Vec2; yaw: number; side: 'N' | 'S' }[];
+  stations: { kind: 'stash' | 'noteboard' | 'bestiary' | 'gallery' | 'camcorder' | 'kitchen' | 'crafting'; room: number; pos: Vec2; yaw: number }[];
+  npcs: { id: string; pos: Vec2; yaw: number }[];
+  /** Wing gates: sealed until the act is reached. */
+  gates: { act: 2 | 3; box: { x0: number; z0: number; x1: number; z1: number } }[];
+  tunnelRoom: number;
+}
+
+export interface HideSpot { id: string; room: number; pos: Vec2; kind: 'locker' | 'desk'; /** which way the opening faces (radians) */ yaw: number }
+export interface NavNode { id: number; pos: Vec2; room: number; /** room centre, doorway mouth (0.9 m in front of a door) or the door itself */ kind?: 'room' | 'mouth' | 'door'; connection?: number }
 export interface NavEdge { a: number; b: number; cost: number; connection?: number }
 
 export interface LevelPlan {
@@ -50,6 +61,9 @@ export interface LevelPlan {
   /** Always the max set of waypoint candidates; difficulty selects a subset (layout never changes). */
   waypoints: Waypoint[];
   items: ItemSpawn[];
+  hides?: HideSpot[];
+  /** Central Hub data (doors, stations, NPC spots); only present on the hub plan. */
+  hub?: HubData;
   entitySlots: EntitySlot[];
   nav: { nodes: NavNode[]; edges: NavEdge[] };
   /** Estimated minutes-of-play seconds for a competent player. */

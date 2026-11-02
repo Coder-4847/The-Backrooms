@@ -10,6 +10,7 @@ import { SLOT_COUNT, type SlotData } from '../core/save';
 import { debugEnabled } from '../core/debug';
 import { randomSeedString } from '../gen/rng';
 import { glyphFor } from '../core/input/actions';
+import { itemDef } from '../systems/items';
 import type { Settings } from '../core/settings';
 import type { Game } from '../core/game';
 import type { LevelScene } from '../levels/scene';
@@ -21,6 +22,14 @@ export class Ui {
   private toasts = h('div', { class: 'toasts', 'aria-live': 'polite' });
   private captionEl = h('div', { class: 'captions', 'aria-live': 'polite' });
   private stamina = h('div', { class: 'bar' }, h('i'));
+  private hotbar = h('div', { class: 'hotbar' });
+  private vitals = h('div', { class: 'vitals' });
+  private gear = h('div', { class: 'gear' });
+  private noise = h('div', { class: 'noise' }, h('i'));
+  private panelEl: HTMLElement | null = null;
+  private rewindEl: HTMLElement | null = null;
+  private hudKey = '';
+  panelOpen = false;
   private timeEl = h('span', { class: 'ts' });
   private statsEl = h('pre', { class: 'stats' });
   private loading = h('div', { class: 'loading', hidden: true });
@@ -32,7 +41,7 @@ export class Ui {
   constructor(private game: Game) {
     this.hud.append(
       h('div', { class: 'rec' }, h('i', { class: 'dot' }), 'REC', this.timeEl),
-      this.stamina, this.promptEl, this.statsEl);
+      this.stamina, this.promptEl, this.statsEl, this.hotbar, this.vitals, this.gear, this.noise);
     document.getElementById('app')!.append(this.toasts, this.captionEl, this.loading);
     bus.on('toast', (t) => this.toast(t.text, t.kind));
     bus.on('caption', (c) => this.caption(c.text, c.ms));
@@ -80,6 +89,32 @@ export class Ui {
     document.documentElement.classList.toggle('hc', s.highContrast);
   }
 
+  // ---- panels (inventory, journal, dialogue...) ----
+
+  openPanel(el: HTMLElement): void {
+    this.panelEl?.remove();
+    this.panelEl = el; this.panelOpen = true;
+    if (document.pointerLockElement) document.exitPointerLock();
+    this.root.append(el);
+    this.root.classList.add('active');
+    (el.querySelector('button, input') as HTMLElement | null)?.focus({ preventScroll: true });
+  }
+
+  closePanel(): void {
+    this.panelEl?.remove(); this.panelEl = null;
+    if (!this.panelOpen) return;
+    this.panelOpen = false;
+    if (!this.screen) this.root.classList.remove('active');
+    if (this.game.state === 'playing') this.game.input.requestLock();
+  }
+
+  showRewind(on: boolean, title = 'REWINDING', sub = ''): void {
+    this.rewindEl?.remove(); this.rewindEl = null;
+    if (!on) return;
+    this.rewindEl = h('div', { class: 'rewind' }, h('div', { class: 'big' }, '◀◀ ' + title), sub && h('div', { class: 'muted' }, sub));
+    document.getElementById('app')!.append(this.rewindEl);
+  }
+
   // ---- screens ----
 
   contentWarning(): Promise<void> {
@@ -111,7 +146,8 @@ export class Ui {
         h('button', { class: 'btn', onclick: () => this.infoScreen('Credits', 'Design, code, procedural art and synthesized audio: all generated in code. Rendering by three.js.') }, 'Credits'),
         h('hr'),
         h('button', { class: 'btn ghost', onclick: () => void this.launch('testroom') }, 'Test Room'),
-        h('button', { class: 'btn ghost', onclick: () => void this.launch('placeholder') }, 'Placeholder Level')),
+        h('button', { class: 'btn ghost', onclick: () => void this.launch('placeholder') }, 'Placeholder Level'),
+        h('button', { class: 'btn ghost', onclick: () => void this.launch('level0') }, 'Level 0 (standalone)')),
       h('div', { class: 'foot' }, `build ${import.meta.env.MODE}${debugEnabled() ? ' · debug: press the backtick key for the console' : ''}`));
     this.show(menu);
   }
@@ -120,7 +156,7 @@ export class Ui {
 
   private async launch(id: string): Promise<void> {
     this.game.ensureAudio();
-    await this.game.startLevel(id, 'TEST-ROOM', this.game.settings.value.difficulty);
+    await this.game.startLevel(id, 'TEST-ROOM', this.game.settings.value.difficulty, null);
   }
 
   private infoScreen(title: string, text: string): void {
@@ -153,8 +189,7 @@ export class Ui {
 
   private async resume(s: SlotData): Promise<void> {
     this.game.ensureAudio();
-    // Phase 0 has no hub yet: resuming restarts the placeholder level with the saved run seed.
-    await this.game.startLevel('placeholder', s.runSeed, s.difficulty, s);
+    await this.game.resumeSlot(s);
   }
 
   private async manageScreen(): Promise<void> {
@@ -208,19 +243,34 @@ export class Ui {
       h('div', { class: 'menu' },
         h('button', { class: 'btn primary', onclick: () => this.game.pause(false) }, 'Resume'),
         h('button', { class: 'btn', onclick: () => this.settingsScreen('pause') }, 'Settings'),
-        h('button', { class: 'btn', onclick: async () => { await this.game.autosave(); this.game.loop.paused = false; await this.game.showMenu(); } }, 'Exit to menu'))));
+        h('button', { class: 'btn', onclick: async () => { await this.game.autosave(); this.game.loop.paused = false; this.game.currentSlot = null; await this.game.showMenu(); } }, 'Exit to menu'))));
   }
 
   inGame(level: LevelScene | null): void {
     if (!level) return;
-    const s = level.sim.player.stamina;
+    const sim = level.sim, st = sim.stats, inv = sim.inv;
+    const s = sim.player.stamina;
     ($('i', this.stamina) as HTMLElement).style.width = `${s}%`;
     this.stamina.classList.toggle('low', s < 25);
     const p = level.prompt;
     const text = p ? `[${glyphFor('Interact', this.game.input.device, this.game.settings.value.bindings, this.game.input.padLayout)}] ${p}` : '';
     if (text !== this.lastPrompt) { this.promptEl.textContent = text; this.lastPrompt = text; }
-    const t = new Date(Date.UTC(1993, 5, 14, 3, 12, 0) + level.sim.time * 1000);
+    const t = new Date(Date.UTC(1993, 5, 14, 3, 12, 0) + sim.time * 1000);
     this.timeEl.textContent = `${t.getUTCHours().toString().padStart(2, '0')}:${t.getUTCMinutes().toString().padStart(2, '0')}:${t.getUTCSeconds().toString().padStart(2, '0')}  SP`;
+    ($('i', this.noise) as HTMLElement).style.width = `${Math.round(Math.min(1, sim.player.noise) * 100)}%`;
+    // hotbar / vitals / gear: rebuilt only when something visible changed
+    const key = [inv.hotbar.map((id) => (id ? `${id}${inv.count(id)}` : '-')).join(','), inv.selected, Math.round(st.health / 5), Math.round(st.sanity / 5), Math.round(st.hunger / 5), Math.round(st.thirst / 5), Math.round(sim.flash.battery), Math.round(sim.cam.battery / 5), sim.flash.on, sim.cam.nightVision].join('|');
+    if (key === this.hudKey) return;
+    this.hudKey = key;
+    this.hotbar.replaceChildren(...inv.hotbar.map((id, i) => {
+      const b = h('button', { class: 'hb' + (inv.selected === i ? ' on' : ''), 'aria-label': `Slot ${i + 1}` }, h('small', {}, String(i + 1)), id ? `${itemDef(id).name}${inv.count(id) > 1 ? ` ×${inv.count(id)}` : ''}` : '—');
+      b.addEventListener('click', () => { inv.selected = i; if (inv.held) sim.useHeld(); });
+      return b;
+    }));
+    const bar = (label: string, v: number) => [h('span', {}, label), h('div', { class: 'vb' + (v < 25 ? ' low' : '') }, h('i', { style: `width:${Math.round(v)}%` }))];
+    this.vitals.replaceChildren(...bar('HP', st.health), ...bar('MIND', st.sanity), ...(sim.hungerEnabled && sim.diff.hungerRate > 0 ? [...bar('FOOD', st.hunger), ...bar('WATER', st.thirst)] : []));
+    this.vitals.classList.toggle('calm', st.health > 90 && st.sanity > 85 && st.hunger > 70 && st.thirst > 70);
+    this.gear.textContent = `${sim.flash.on && inv.has('flashlight') ? '☼' : '☼̸'} ${Math.round(sim.flash.battery)}%   ${sim.cam.nightVision ? 'NV ON' : 'NV'} ${Math.round(sim.cam.battery)}%`;
   }
 
   frame(game: Game): void {

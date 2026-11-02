@@ -24,7 +24,11 @@ export interface SlotData {
   frontier: number;
   completed: Record<string, { bestTime: number; difficulty: DifficultyId }>;
   /** Last checkpoint snapshot (level id + waypoint index + stats at that moment). */
-  checkpoint: { levelId: string; waypoint: number; time: number; inventory: InventoryState; stats: PlayerStats } | null;
+  checkpoint: {
+    levelId: string; waypoint: number; time: number; inventory: InventoryState; stats: PlayerStats;
+    /** Everything needed to rebuild the level at this checkpoint (seed text, mode, snapshot of pickups/doors/keys). */
+    seed?: string; mode?: 'campaign' | 'replay'; difficulty?: DifficultyId; index?: number; deaths?: number; sim?: unknown;
+  } | null;
   inventory: InventoryState;
   stats: PlayerStats;
   npcs: Record<string, unknown>;

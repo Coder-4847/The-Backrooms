@@ -27,9 +27,12 @@ export class InputManager {
   cfg: InputConfig;
 
   private keys = new Set<string>();
+  /** Keys pressed since the last tick: latched so a tap shorter than one frame is never lost. */
+  private latched = new Set<string>();
   private prev = emptyActionMap();
   private cur = emptyActionMap();
   private frameOut: InputFrame = emptyFrame();
+  private wheelPulse = false;
   private mouseDX = 0; private mouseDY = 0;
   private gyroDX = 0; private gyroDY = 0; private lastGyro: { a: number; b: number } | null = null;
   private tmp = { x: 0, y: 0 };
@@ -49,6 +52,7 @@ export class InputManager {
     window.addEventListener('blur', () => this.keys.clear());
     el.addEventListener('mousemove', this.onMouseMove);
     el.addEventListener('click', this.onClick);
+    el.addEventListener('wheel', () => { this.wheelPulse = true; }, { passive: true });
     document.addEventListener('pointerlockchange', () => { this.locked = document.pointerLockElement === el; });
     window.addEventListener('pointerdown', (e) => { if (e.pointerType === 'touch') this.note('touch'); }, { passive: true });
     window.addEventListener('gamepadconnected', (e) => { this.padLayout = padLayoutFromId(e.gamepad.id); });
@@ -83,7 +87,7 @@ export class InputManager {
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
     if (this.capture) { e.preventDefault(); const c = this.capture; this.capture = null; c('kb', e.code); return; }
     this.note('kbm');
-    if (!e.repeat) this.keys.add(e.code);
+    if (!e.repeat) { this.keys.add(e.code); this.latched.add(e.code); }
     if (e.code === 'Tab' || e.code === 'Space' || e.code === 'Backquote') e.preventDefault();
   };
   private onKeyUp = (e: KeyboardEvent): void => { this.keys.delete(e.code); };
@@ -169,9 +173,12 @@ export class InputManager {
     // --- actions ---
     const touchHeld = new Set<Action>(this.touch.held);
     for (const a of this.injectHeld) touchHeld.add(a);
-    resolveActions(b, this.keys, padDown, touchHeld, this.cur);
+    const held = this.latched.size ? new Set([...this.keys, ...this.latched]) : this.keys;
+    this.latched.clear();
+    resolveActions(b, held, padDown, touchHeld, this.cur);
     diffActions(this.prev, this.cur, f.pressed, f.released);
     for (const a of ACTIONS) { f.down[a] = this.cur[a]; this.prev[a] = this.cur[a]; }
+    if (this.wheelPulse) { f.pressed.NextItem = true; this.wheelPulse = false; }
     f.device = this.tracker.device;
     return f;
   }

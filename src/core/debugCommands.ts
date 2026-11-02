@@ -3,7 +3,8 @@ import { FUTURE_COMMANDS } from './debug';
 import { LEVELS, levelById } from '../levels/registry';
 import { runBot } from '../levels/bot';
 import { TIERS, type TierId } from '../render/quality';
-import { parseSeed } from '../gen/rng';
+import { parseSeed, Rng } from '../gen/rng';
+import { Director } from '../systems/director';
 import { DIFFICULTY_ORDER, type DifficultyId } from './difficulty';
 import type { Game } from './game';
 import type { TierSetting } from './settings';
@@ -41,5 +42,16 @@ export function registerDebugCommands(game: Game): void {
   r.register({ name: 'save', help: 'write the current slot', run: async (_a, api) => { await game.autosave(); api.print('saved'); } });
   r.register({ name: 'difficulty', help: `difficulty <${DIFFICULTY_ORDER.join('|')}>`, run: (a, api) => { game.settings.set('difficulty', (a[0] ?? 'normal') as DifficultyId); api.print(`new-game difficulty ${a[0]}`); } });
   r.register({ name: 'tiers', help: 'list tier definitions', run: (_a, api) => { (Object.keys(TIERS) as TierId[]).forEach((t) => api.print(`${t}: res ${TIERS[t].resolution}, lights ${TIERS[t].lights}, tex ${TIERS[t].textureSize}, post ${TIERS[t].post}`)); } });
+  r.register({ name: 'give', help: 'give <item> [n] : add an item to the backpack', run: (a, api) => { const l = lv(); if (!l) return api.print('no level'); const left = l.sim.inv.add(a[0], Number(a[1] ?? 1)); api.print(left ? `${left} did not fit` : 'ok'); } });
+  r.register({ name: 'spawn', help: 'spawn <stick|hound> : spawn an entity 6 m ahead', run: (a, api) => { const l = lv(); if (!l) return api.print('no level'); const p = l.sim.player; const e = l.sim.ew.spawn(a[0] ?? 'stick', p.x - Math.sin(p.yaw) * 6, p.z - Math.cos(p.yaw) * 6, 99); api.print(`spawned ${e.def.id} #${e.id}`); } });
+  r.register({ name: 'kill', help: 'remove all entities', run: (_a, api) => { const l = lv(); if (!l) return api.print('no level'); l.sim.ew.entities.length = 0; api.print('entities cleared'); } });
+  r.register({ name: 'sanity', help: 'sanity <0-100>', run: (a) => { const l = lv(); if (l) l.sim.stats.sanity = Number(a[0] ?? 100); } });
+  r.register({ name: 'hunger', help: 'hunger <0-100> (also sets thirst)', run: (a) => { const l = lv(); if (l) { l.sim.stats.hunger = Number(a[0] ?? 100); l.sim.stats.thirst = Number(a[0] ?? 100); } } });
+  r.register({ name: 'intensity', help: 'intensity <0-1.5> : force the Director intensity', run: (a, api) => { const l = lv(); if (!l) return api.print('no level'); l.sim.intensity = Number(a[0] ?? 0.5); l.sim.director = new Director(l.sim.diff, l.sim.intensity, new Rng(1)); l.sim['ctx'].director = l.sim.director; api.print(`intensity ${l.sim.intensity}`); } });
+  r.register({ name: 'die', help: 'kill the player (tests death/respawn)', run: () => { const l = lv(); if (l) { l.sim.player.god = false; l.sim.stats.damage(1000, l.sim.diff); } } });
+  r.register({ name: 'win', help: 'complete the current level', run: () => { void game.flow.completeLevel(); } });
+  r.register({ name: 'hub', help: 'go to the Central Hub (needs a campaign slot)', run: async (_a, api) => { if (!game.currentSlot) return api.print('start a New Game first'); await game.flow.enterHub(); } });
+  r.register({ name: 'unlock', help: 'unlock <n> : set the campaign frontier (door index)', run: (a, api) => { const s = game.currentSlot; if (!s) return api.print('no slot'); s.frontier = Math.max(0, Math.min(24, Number(a[0] ?? 0))); api.print(`frontier ${s.frontier}`); } });
+  r.register({ name: 'director', help: 'show Director phase/tension', run: (_a, api) => { const l = lv(); if (l) api.print(`${l.sim.director.phase} tension ${l.sim.director.tension.toFixed(2)} hunts ${l.sim.director.huntsStarted}`); } });
   for (const f of FUTURE_COMMANDS) r.register({ name: f.name, help: f.help, phase: f.phase, run: () => {} });
 }

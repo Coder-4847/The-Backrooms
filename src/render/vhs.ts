@@ -13,11 +13,11 @@ const shader = {
     uIntensity: { value: 0.7 }, uGrain: { value: 1 }, uScan: { value: 1 }, uChroma: { value: 1 }, uVig: { value: 1 },
     uGlitch: { value: 0 }, uFear: { value: 0 }, uWobble: { value: 1 },
     uTint: { value: new Vector3(1, 1, 1) }, uSat: { value: 1 }, uContrast: { value: 1 },
-    uCbMode: { value: 0 },
+    uCbMode: { value: 0 }, uNv: { value: 0 },
   },
   vertexShader: /* glsl */ `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
   fragmentShader: /* glsl */ `
-    uniform sampler2D tDiffuse; uniform float uTime, uIntensity, uGrain, uScan, uChroma, uVig, uGlitch, uFear, uWobble, uSat, uContrast, uCbMode;
+    uniform sampler2D tDiffuse; uniform float uNv, uTime, uIntensity, uGrain, uScan, uChroma, uVig, uGlitch, uFear, uWobble, uSat, uContrast, uCbMode;
     uniform vec2 uRes; uniform vec3 uTint; varying vec2 vUv;
     float hash(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
     vec3 colorblind(vec3 c){
@@ -50,6 +50,8 @@ const shader = {
       col.r = texture2D(tDiffuse, uv + d * ca).r;
       col.g = texture2D(tDiffuse, uv).g;
       col.b = texture2D(tDiffuse, uv - d * ca).b;
+      // camcorder night vision: amplify and tint green-white
+      if (uNv > 0.5) { float nl = dot(col, vec3(0.299, 0.587, 0.114)); col = vec3(0.42, 1.0, 0.55) * (nl * 3.6 + 0.04); }
       // colour grading
       col *= uTint;
       float l = dot(col, vec3(0.299, 0.587, 0.114));
@@ -60,7 +62,7 @@ const shader = {
       col *= 1.0 - uScan * I * 0.10 * (0.5 + 0.5 * sin(uv.y * uRes.y * 3.14159));
       // luma-weighted grain
       float n = hash(uv * uRes + fract(t) * 91.7) - 0.5;
-      col += n * uGrain * I * 0.16 * (1.0 - l * 0.5);
+      col += n * (uGrain * I * 0.16 + uNv * 0.06) * (1.0 - l * 0.5);
       // vignette (stronger with fear)
       float vig = smoothstep(0.85, 0.25, length(d) * (1.15 + uFear * 0.5));
       col *= mix(1.0, vig, uVig * (0.55 + 0.35 * I));

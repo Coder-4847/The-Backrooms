@@ -126,3 +126,44 @@ select { background: var(--panel); border: 1px solid var(--line); padding: 8px 1
 .touch-btn[data-slot='5'] { right: 152px; bottom: 124px; }
 .touch-btn[data-slot='6'] { top: calc(env(safe-area-inset-top) + 10px); right: calc(env(safe-area-inset-right) + 10px); position: fixed; width: 44px; height: 44px; font-size: 14px; }
 @media (prefers-reduced-motion: reduce) { .logo, .rec .dot, .potato-grain { animation: none; } }
+
+/* panels */
+.panel { max-width: 860px; }
+.inv-wrap { display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start; }
+.inv-grid { position: relative; display: grid; grid-template-columns: repeat(6, 58px); grid-auto-rows: 58px; border: 1px solid var(--line); background: var(--panel); touch-action: none; }
+.inv-grid .cell { border: 1px solid rgba(216, 194, 122, 0.08); }
+.stack { position: absolute; background: rgba(216, 194, 122, 0.16); border: 1px solid var(--accent); font-size: 0.75em; padding: 2px; cursor: grab; text-align: center; overflow: hidden; touch-action: none; }
+.stack.sel { background: rgba(216, 194, 122, 0.35); }
+.stack.drag { z-index: 5; opacity: 0.8; cursor: grabbing; }
+.stack b { display: block; font-size: 1.1em; }
+.inv-detail { flex: 1; min-width: 220px; }
+.inv-hot { display: flex; gap: 8px; flex-wrap: wrap; }
+.hslot { min-width: 110px; min-height: 52px; background: var(--panel); border: 1px solid var(--line); cursor: pointer; padding: 6px 10px; text-align: left; }
+.hslot small { display: block; color: var(--muted); }
+.hslot.on { border-color: var(--accent); color: var(--accent); }
+.jlist { display: flex; flex-direction: column; gap: 6px; min-width: 240px; max-height: 50vh; overflow-y: auto; }
+.jview { flex: 1; min-width: 240px; }
+.note-text { white-space: pre-wrap; font-family: var(--mono); font-size: 0.92em; line-height: 1.6; }
+.note-text.paper { background: rgba(232, 226, 200, 0.08); border: 1px solid var(--line); padding: 16px; max-width: 520px; text-align: left; }
+.dialogue .say { min-height: 5.5em; max-width: 560px; font-size: 1.05em; text-align: left; }
+.dialogue .btn { width: 100%; max-width: 560px; }
+h4 { margin: 10px 0 2px; color: var(--accent); font-weight: 500; }
+
+/* HUD extras */
+.hotbar { position: absolute; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 18px); transform: translateX(-50%); display: flex; gap: 6px; pointer-events: auto; }
+.hb { min-width: 76px; padding: 4px 8px; background: rgba(12, 11, 8, 0.6); border: 1px solid var(--line); font-size: 0.7em; text-align: center; cursor: pointer; }
+.hb.on { border-color: var(--accent); color: var(--accent); }
+.hb small { display: block; opacity: 0.6; }
+.vitals { position: absolute; left: calc(env(safe-area-inset-left) + 22px); bottom: calc(env(safe-area-inset-bottom) + 34px); display: grid; grid-template-columns: auto 90px; gap: 3px 8px; font-size: 0.65em; opacity: 0.7; transition: opacity 0.6s; }
+.vitals.calm { opacity: 0.18; }
+.vitals .vb { height: 3px; background: rgba(255, 255, 255, 0.12); align-self: center; }
+.vitals .vb i { display: block; height: 100%; background: var(--fg); }
+.vitals .vb.low i { background: var(--rec); }
+.gear { position: absolute; right: calc(env(safe-area-inset-right) + 22px); bottom: calc(env(safe-area-inset-bottom) + 26px); font-size: 0.7em; text-align: right; opacity: 0.8; }
+.noise { position: absolute; right: calc(env(safe-area-inset-right) + 22px); bottom: calc(env(safe-area-inset-bottom) + 70px); width: 70px; height: 3px; background: rgba(255, 255, 255, 0.1); }
+.noise i { display: block; height: 100%; background: var(--accent); transition: width 0.1s; }
+body.hiding #app::after { content: ''; position: absolute; inset: 0; pointer-events: none; z-index: 8; background: linear-gradient(#000 0 38%, transparent 38% 62%, #000 62%); }
+.rewind { position: absolute; inset: 0; z-index: 40; background: rgba(0, 0, 0, 0.85); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; font-family: var(--mono); letter-spacing: 0.3em; color: var(--fg); animation: fade 0.3s both; }
+.rewind::before { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.06) 0 2px, transparent 2px 5px); animation: roll 0.4s linear infinite; }
+@keyframes roll { to { background-position: 0 20px; } }
+.rewind .big { font-size: 2em; color: var(--rec); }

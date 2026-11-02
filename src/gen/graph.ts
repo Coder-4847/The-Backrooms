@@ -28,6 +28,30 @@ export interface GraphOptions {
   doorWidth?: number;
 }
 
+/**
+ * Nav graph: room centre nodes, plus for each door a "mouth" node 0.9 m in front of it on each side and
+ * the door node itself, so any path through a doorway crosses it perpendicular to the wall (no clipped jambs).
+ */
+export function buildNav(rooms: Room[], connections: Connection[]): LevelPlan['nav'] {
+  const nodes: NavNode[] = [];
+  const edges: NavEdge[] = [];
+  const center = new Map<number, number>();
+  const d2 = (p: Vec2, q: Vec2) => Math.hypot(p.x - q.x, p.z - q.z);
+  for (const r of rooms) { center.set(r.id, nodes.length); nodes.push({ id: nodes.length, pos: { x: r.x + r.w / 2, z: r.z + r.d / 2 }, room: r.id, kind: 'room' }); }
+  for (const c of connections) {
+    const a = rooms[c.a], b = rooms[c.b];
+    // direction from room a toward room b across the wall
+    const dir = c.axis === 'z' ? Math.sign(b.x + b.w / 2 - (a.x + a.w / 2)) || 1 : Math.sign(b.z + b.d / 2 - (a.z + a.d / 2)) || 1;
+    const off = (k: number): Vec2 => (c.axis === 'z' ? { x: c.door.x + dir * k, z: c.door.z } : { x: c.door.x, z: c.door.z + dir * k });
+    const ma = nodes.length; nodes.push({ id: ma, pos: off(-0.9), room: c.a, kind: 'mouth', connection: c.id });
+    const dn = nodes.length; nodes.push({ id: dn, pos: c.door, room: c.a, kind: 'door', connection: c.id });
+    const mb = nodes.length; nodes.push({ id: mb, pos: off(0.9), room: c.b, kind: 'mouth', connection: c.id });
+    const ca = center.get(c.a)!, cb = center.get(c.b)!;
+    edges.push({ a: ca, b: ma, cost: d2(nodes[ca].pos, nodes[ma].pos) }, { a: ma, b: dn, cost: 0.9, connection: c.id }, { a: dn, b: mb, cost: 0.9, connection: c.id }, { a: mb, b: cb, cost: d2(nodes[mb].pos, nodes[cb].pos) });
+  }
+  return { nodes, edges };
+}
+
 const WALK_SPEED = 2.4; // m/s average including looking around
 const PUZZLE_SECONDS = 25;
 
@@ -266,21 +290,9 @@ export function generateGraphLevel(seed: number, o: GraphOptions): LevelPlan {
   // extra supplies in the supply room
   if (supply) for (let i = 0; i < 3; i++) items.push({ id: `item${itemN++}`, item: i === 0 ? 'battery' : i === 1 ? 'almond_water' : 'bandage', kind: 'loot', room: supply.id, pos: randIn(supply, rItems) });
 
-  // nav graph: room centres + door nodes
-  const nodes: NavNode[] = [];
-  const edges: NavEdge[] = [];
-  const centerNode = new Map<number, number>();
-  for (const r of rooms) { centerNode.set(r.id, nodes.length); nodes.push({ id: nodes.length, pos: roomCenter(r), room: r.id }); }
-  const dist2 = (p: Vec2, q: Vec2) => Math.hypot(p.x - q.x, p.z - q.z);
-  for (const c of connections) {
-    const dn = nodes.length;
-    nodes.push({ id: dn, pos: c.door, room: c.a });
-    for (const rid of [c.a, c.b]) {
-      const cn = centerNode.get(rid)!;
-      edges.push({ a: cn, b: dn, cost: dist2(nodes[cn].pos, c.door), connection: c.id });
-    }
-  }
+  const nav = buildNav(rooms, connections);
 
+  const dist2 = (p: Vec2, q: Vec2) => Math.hypot(p.x - q.x, p.z - q.z);
   // time estimate: path walk + key detours + puzzle time
   let pathMeters = 0;
   for (let i = 0; i + 1 < criticalPath.length; i++) pathMeters += dist2(roomCenter(rooms[criticalPath[i]]), roomCenter(rooms[criticalPath[i + 1]]));
@@ -300,7 +312,7 @@ export function generateGraphLevel(seed: number, o: GraphOptions): LevelPlan {
     spawn: { room: spawnRoom, pos: roomCenter(spawnR) },
     exit: { room: exitRoom, pos: roomCenter(rooms[exitRoom]) },
     criticalPath, waypoints, items, entitySlots,
-    nav: { nodes, edges },
+    nav,
     estSeconds,
     size: Math.min(1, pathLen / 10),
   };

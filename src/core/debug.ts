@@ -17,12 +17,6 @@ export const debugEnabled = (): boolean => {
 
 /** Phase-gated commands from the spec that need systems which do not exist yet. */
 export const FUTURE_COMMANDS: { name: string; help: string; phase: number }[] = [
-  { name: 'give', help: 'give <item> [n] : add an item', phase: 1 },
-  { name: 'spawn', help: 'spawn <entity> : spawn an entity', phase: 1 },
-  { name: 'kill', help: 'kill <entity|all>', phase: 1 },
-  { name: 'sanity', help: 'sanity <0-100>', phase: 1 },
-  { name: 'hunger', help: 'hunger <0-100>', phase: 1 },
-  { name: 'intensity', help: 'intensity <0-1> : force the intensity tier', phase: 1 },
   { name: 'ending', help: 'ending <1-6> : trigger an ending', phase: 5 },
 ];
 

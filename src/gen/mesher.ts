@@ -106,7 +106,7 @@ export function meshChunk(plan: LevelPlan, cx: number, cz: number, q: MeshQualit
     const r = plan.rooms[rid];
     const H = r.height;
     const wallMat = (`wall${r.variant % 4}`) as MatKey;
-    const floorMat: MatKey = r.kind === 'supply' || r.kind === 'nest' ? 'floor' : 'floor';
+    const floorMat: MatKey = r.kind === 'supply' ? 'floorTile' : 'floor';
     const x0 = r.x, x1 = r.x + r.w, z0 = r.z, z1 = r.z + r.d;
 
     // floor + ceiling (full rect, so no gaps under thick walls)

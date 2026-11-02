@@ -7,17 +7,20 @@
 - `src/gen`     seeded RNG, `types.ts` (LevelPlan/LevelDef/LevelLook), `graph.ts` (BSP rooms -> graph -> critical path -> locks/keys -> waypoints
                 -> nav), `validate.ts`, `waypoints.ts`, `mesher.ts` (pure chunk geometry+colliders+lights), `chunks.ts` (streaming),
                 `pool.ts` + `gen.worker.ts` + `handlers.ts` (workers with inline fallback), `textures.ts` (procedural PBR)
-- `src/levels`  `registry.ts` (the single `LEVELS` table), one module per level, `sim.ts` (headless gameplay core), `bot.ts` (autopilot),
-                `scene.ts` (THREE visuals wrapper), `props.ts` (test-room gallery)
+- `src/levels`  `registry.ts` (the single `LEVELS` table) + `campaign.ts` (the 25-entry table the hub shows), `level0.ts`, `hub.ts` (procedural tunnel + wings),
+                `sim.ts` (headless gameplay core: player, items, stats, light, noise, director, entities, hiding), `bot.ts` (autopilot),
+                `scene.ts` (THREE wrapper) + `fx.ts` (events -> audio/hallucinations) + `entityVisuals.ts` + `hubObjects.ts`, `props.ts` (test room)
 - `src/render`  `quality.ts` (tiers, Auto pick, adaptive resolution - pure), `gfx.ts` (renderer + post chain), `vhs.ts` (VHS/grade pass),
                 `materials.ts`, `lights.ts` (fixed-size light pool), `atmosphere.ts` (dust), `benchmark.ts`
 - `src/audio`   `engine.ts` (buses, HRTF panner, occlusion LP, reverb send, limiter), `reverb.ts` (pure IR synthesis), `sounds.ts` (recipes)
 - `src/ui`      `ui.ts` (screens, HUD, debug console), `settingsUi.ts`, `dom.ts`, `styles.css`
-- `src/story`   `endings.ts` (resolver skeleton; finalized in Phase 5). `src/entities`, `src/systems`: empty until Phase 1.
+- `src/systems` items (data table), inventory (grid + hotbar + stash + death penalty), stats (health/sanity/hunger/thirst/fear + hallucinations), light (flashlight, camcorder), noise (room-graph propagation), director (build/peak/release/quiet)
+- `src/entities` defs, `nav.ts` (A*), `ai.ts` (perception, states, stick + hound behaviors, tell-before-attack), `body.ts` (procedural lofted-tube bodies), `lab.ts` (Entity Lab harness)
+- `src/story`   `endings.ts` (resolver skeleton; Phase 5), `notes.ts`, `npcs.ts` (dialogue graphs)
 - `tools/`      validate-levels, bot, smoke, shots, perf, icons (Playwright-based ones share `browser.ts`)
 
 ## Data flow
-`main.ts` -> `Game.create` (storage, profile, settings, Gfx, workers, input, UI) -> `Game.start` (content warning, Auto benchmark, menu).
+`main.ts` -> `Game.create` (storage, profile, settings, Gfx, workers, input, UI) -> `Game.start` (content warning, Auto benchmark, menu). `core/flow.ts` owns the campaign loop: New Game -> Hub -> door -> Level -> (checkpoint autosaves, death/rewind/respawn, level-complete autosave) -> Hub.
 `LevelDef.generate(seed, params)` -> `LevelPlan` (pure, deterministic; layout never depends on difficulty).
 `LevelScene.load`: plan -> `LevelSim` (colliders, doors, items, waypoints) + workers mesh chunks (`ChunkStreamer`) -> THREE meshes;
 materials synthesized in workers per tier. Fixed-step `update` drives `LevelSim`; `render` interpolates and draws through `Gfx`.

@@ -28,6 +28,7 @@ export class Gfx {
   /** Fear 0..1 and one-shot glitch 0..1, set by gameplay; consumed by the VHS pass. */
   fear = 0;
   glitch = 0;
+  nightVision = false;
 
   private composer: EffectComposer | null = null;
   private renderPass: RenderPass | null = null;
@@ -177,6 +178,7 @@ export class Gfx {
       u.uGlitch.value = s.reduceFlicker ? this.glitch * 0.3 : this.glitch;
       u.uFear.value = s.reduceShake ? this.fear * 0.5 : this.fear;
       u.uCbMode.value = CB_MODE[s.colorblind];
+      u.uNv.value = this.nightVision ? 1 : 0;
     }
     this.glitch *= Math.pow(0.02, dt); // decays in ~1s
     this.renderer.info.reset();

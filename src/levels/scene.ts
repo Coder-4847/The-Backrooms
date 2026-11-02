@@ -4,11 +4,14 @@
  * overlays. One instance per loaded level; `dispose()` frees everything.
  */
 import {
-  AmbientLight, Box3, BoxGeometry, BufferAttribute, BufferGeometry, Color, CylinderGeometry, FogExp2, Group, InstancedMesh, LineBasicMaterial,
+  AmbientLight, Box3, PointLight, BoxGeometry, BufferAttribute, BufferGeometry, Color, CylinderGeometry, FogExp2, Group, InstancedMesh, LineBasicMaterial,
   LineSegments, Matrix4, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, PMREMGenerator, Scene, SpotLight, Vector3, type Material,
 } from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { LevelSim } from './sim';
+import { LevelSim, type SimEvent, type SimOptions, type SimSnapshot } from './sim';
+import { EntityVisuals } from './entityVisuals';
+import { SceneFx } from './fx';
+import { buildHubObjects, hubInteractables, type HubState } from './hubObjects';
 import { buildTestProps, type PropSet } from './props';
 import { ChunkStreamer } from '../gen/chunks';
 import { type ChunkData, type MatKey } from '../gen/mesher';
@@ -22,6 +25,7 @@ import type { DifficultyId } from '../core/difficulty';
 import type { LevelDef, LevelPlan } from '../gen/types';
 import type { Surface } from '../audio/sounds';
 import type { TierDef } from '../render/quality';
+import { itemDef } from '../systems/items';
 
 interface ChunkVis { group: Group; lamps: InstancedMesh | null; lampDefs: ChunkData['lights'] }
 
@@ -32,10 +36,8 @@ export class LevelScene {
   sim!: LevelSim;
   plan!: LevelPlan;
   prompt: string | null = null;
-  flashOn = true;
   onExit: (() => void) | null = null;
   onCheckpoint: ((index: number) => void) | null = null;
-  fear = 0;
   private lib!: MaterialLibrary;
   private lights!: LightPool;
   private dust: Dust | null = null;
@@ -56,7 +58,20 @@ export class LevelScene {
   private tmpC = new Color();
   private fwd = new Vector3();
 
-  constructor(private svc: Services, readonly def: LevelDef, readonly seed: number, readonly difficulty: DifficultyId = 'normal', private tierOverride?: TierDef) {}
+  /** Optional hooks set by the Game. */
+  onDeath: (() => void) | null = null;
+  onNote: ((id: string) => void) | null = null;
+  onCustom: ((ref: unknown) => void) | null = null;
+  readonly fearBox = { v: 0 };
+  private ev!: EntityVisuals;
+  private fx!: SceneFx;
+  private ambient!: AmbientLight;
+  private ambientBase = 0.4;
+  private dyn: PointLight[] = [];
+  private hubObj: ReturnType<typeof buildHubObjects> | null = null;
+
+  constructor(private svc: Services, readonly def: LevelDef, readonly seed: number, readonly difficulty: DifficultyId = 'normal', private tierOverride?: TierDef,
+    private opts: { hub?: HubState; sim?: SimOptions; snapshot?: SimSnapshot; genParams?: Record<string, unknown> } = {}) {}
 
   get tier(): TierDef { return this.tierOverride ?? this.svc.tier(); }
 
@@ -64,8 +79,10 @@ export class LevelScene {
     const { svc, def } = this;
     const tier = this.tier, st = svc.settings.value;
     progress(0.02, 'Generating layout');
-    this.plan = def.generate(this.seed, { difficulty: this.difficulty });
-    this.sim = new LevelSim(this.plan, this.difficulty);
+    this.plan = def.generate(this.seed, { difficulty: this.difficulty, ...this.opts.genParams });
+    this.sim = new LevelSim(this.plan, this.difficulty, { seed: this.seed, intensity: def.intensity, scare: st.scare, hungerEnabled: st.hunger, ...this.opts.sim });
+    if (this.opts.snapshot) this.sim.applySnapshot(this.opts.snapshot);
+    if (this.plan.hub) { this.sim.alwaysSafe = true; this.sim.extra = () => hubInteractables(this.plan, this.opts.hub!); }
     const planId = await svc.pool.setPlan(this.plan);
 
     progress(0.1, 'Synthesizing materials');
@@ -75,7 +92,9 @@ export class LevelScene {
     const look = def.look;
     this.scene.background = new Color(look.fogColor);
     this.scene.fog = new FogExp2(look.fogColor, look.fogDensity / Math.max(0.5, st.drawDistance));
-    this.scene.add(new AmbientLight(look.ambient, look.ambientIntensity));
+    this.ambientBase = look.ambientIntensity;
+    this.ambient = new AmbientLight(look.ambient, look.ambientIntensity);
+    this.scene.add(this.ambient);
     if (tier.materials === 'standard') {
       const pm = new PMREMGenerator(svc.gfx.renderer);
       const env = pm.fromScene(new RoomEnvironment(), 0.04);
@@ -95,6 +114,8 @@ export class LevelScene {
     this.flash.shadow.bias = -0.0005;
     this.scene.add(this.flash, this.flashTarget);
     this.flash.target = this.flashTarget;
+    for (const col of [0xff6a30, 0x70ff90]) { const l = new PointLight(col, 0, 12, 2); this.scene.add(l); this.dyn.push(l); }
+    this.ev = new EntityVisuals(this.scene, tier.level);
 
     progress(0.65, 'Building geometry');
     const radius = tier.drawDistance * st.drawDistance;
@@ -107,7 +128,8 @@ export class LevelScene {
     await this.streamer.preload(this.plan.spawn.pos.x, this.plan.spawn.pos.z, Math.min(radius, 30));
     progress(0.85, 'Placing objects');
     await this.buildObjects();
-    this.sim.listeners.push((e) => this.onSimEvent(e));
+    this.fx = new SceneFx(svc, this.sim, this.ev, () => this.lights, this.fearBox);
+    this.sim.listeners.push((e) => { this.onSimEvent(e); this.fx.onEvent(e); });
     this.sim.player.onStep = (sprint, crouch) => this.footstep(sprint, crouch);
     this.sim.player.reduceShake = st.reduceShake;
     this.sim.player.holdCrouchToggle = st.holdToggleCrouch === 'toggle';
@@ -129,17 +151,35 @@ export class LevelScene {
     }
     const keyMat = new MeshBasicMaterial({ color: new Color(0xffc040).multiplyScalar(3) });
     const lootMat = new MeshStandardMaterial({ color: 0x9fc4d8, roughness: 0.4 });
-    const box = new BoxGeometry(0.22, 0.22, 0.22);
-    this.extras.push(keyMat, lootMat, box);
+    const noteMat = new MeshStandardMaterial({ color: 0xe8e2c8, roughness: 0.9, emissive: new Color(0x2a2616) });
+    const box = new BoxGeometry(0.22, 0.22, 0.22), paper = new BoxGeometry(0.3, 0.02, 0.21);
+    this.extras.push(keyMat, lootMat, noteMat, box, paper);
     for (const it of plan.items) {
-      const m = new Mesh(box, it.kind === 'key' ? keyMat : lootMat);
-      m.position.set(it.pos.x, 0.6, it.pos.z);
+      if (sim.collected.has(it.id)) continue; // already taken (checkpoint restore) or scarce on this difficulty
+      const m = new Mesh(it.kind === 'note' ? paper : box, it.kind === 'key' ? keyMat : it.kind === 'note' ? noteMat : lootMat);
+      m.position.set(it.pos.x, it.kind === 'note' ? 0.05 : 0.6, it.pos.z);
+      if (it.kind === 'note') m.rotation.y = it.pos.x;
       scene.add(m); this.itemMeshes.set(it.id, m);
+    }
+    // hiding spots: lockers and desks
+    const lockerG = new BoxGeometry(0.6, 1.9, 0.55), deskG = new BoxGeometry(1.2, 0.75, 0.7);
+    const lockerM = new MeshStandardMaterial({ color: 0x5a6a60, roughness: 0.5, metalness: 0.6 }), deskM = new MeshStandardMaterial({ color: 0x5a4632, roughness: 0.8 });
+    this.extras.push(lockerG, deskG, lockerM, deskM);
+    for (const h of plan.hides ?? []) {
+      const m = new Mesh(h.kind === 'locker' ? lockerG : deskG, h.kind === 'locker' ? lockerM : deskM);
+      m.position.set(h.pos.x, h.kind === 'locker' ? 0.95 : 0.375, h.pos.z); m.rotation.y = h.yaw;
+      m.castShadow = true; m.receiveShadow = true;
+      scene.add(m);
+    }
+    if (plan.hub) {
+      this.hubObj = buildHubObjects(scene, plan, this.opts.hub!);
+      sim.world.add('hubobjs', this.hubObj.colliders);
     }
     const doorGeo = new BoxGeometry(1, 2.2, 0.16);
     const doorMat = new MeshStandardMaterial({ color: 0x5a1f1a, roughness: 0.6, metalness: 0.3 });
     this.extras.push(doorGeo, doorMat);
     for (const d of sim.doors.values()) {
+      if (d.open) continue;
       const m = new Mesh(doorGeo, doorMat);
       m.scale.x = d.conn.width;
       m.position.set(d.conn.door.x, 1.1, d.conn.door.z);
@@ -162,7 +202,8 @@ export class LevelScene {
       const a = this.svc.audio(), s = this.svc.sounds();
       if (a && s) this.humHandles.push(s.beacon(a.spatial(w.pos.x, 1.3, w.pos.z, 'ambience', 0, 0.5)));
     });
-    // exit marker
+    // exit marker: Level 0's "wrong wall" is a slab that hums a half-step flat
+    if (plan.hub) return;
     const exitG = new BoxGeometry(1.5, 2.3, 0.08);
     const exitM = new MeshBasicMaterial({ color: new Color(0x9fe8ff).multiplyScalar(2.5) });
     this.extras.push(exitG, exitM);
@@ -228,12 +269,15 @@ export class LevelScene {
     this.humHandles.push(s.hum(a.flat('ambience', 0.2), 0.1));
   }
 
-  private onSimEvent(e: Parameters<LevelSim['listeners'][number]>[0]): void {
+  private onSimEvent(e: SimEvent): void {
     const s = this.svc.sounds(), a = this.svc.audio();
-    if (e.type === 'pickup') {
+    if (e.type === 'note') { const m = [...this.itemMeshes].find(([id]) => this.plan.items.find((i) => i.id === id)?.item === e.id); if (m) { m[1].removeFromParent(); this.itemMeshes.delete(m[0]); } this.onNote?.(e.id); s?.click('tick'); }
+    else if (e.type === 'death') this.onDeath?.();
+    else if (e.type === 'custom') this.onCustom?.(e.ref);
+    else if (e.type === 'pickup') {
       const m = this.itemMeshes.get(e.item.id);
       if (m) { m.removeFromParent(); this.itemMeshes.delete(e.item.id); }
-      bus.emit('toast', { text: e.item.kind === 'key' ? `Picked up ${e.item.item}` : `Picked up ${e.item.item.replace('_', ' ')}` });
+      bus.emit('toast', { text: `Picked up ${itemDef(e.item.item).name}` });
       s?.click('confirm');
     } else if (e.type === 'unlock') {
       this.doorMeshes.get(e.connection.id)?.removeFromParent();
@@ -256,7 +300,6 @@ export class LevelScene {
   /** One fixed simulation step. */
   update(dt: number, f: InputFrame): void {
     this.tick++;
-    if (f.pressed.Flashlight) { this.flashOn = !this.flashOn; this.svc.sounds()?.click('tick'); }
     this.sim.step(f, dt);
     if (this.tick % 6 === 0) this.prompt = this.sim.interactables()[0]?.label ?? null;
   }
@@ -267,14 +310,23 @@ export class LevelScene {
     const gfx = svc.gfx, cam = gfx.camera;
     this.time += dt;
     const p = this.sim.player;
-    p.apply(cam, alpha, this.fear, this.time);
+    p.apply(cam, alpha, this.fearBox.v, this.time);
     cam.getWorldDirection(this.fwd);
     this.streamer.update(cam.position.x, cam.position.z);
     this.lights.update(cam.position.x, cam.position.y, cam.position.z, this.time, dt);
     this.dust?.update(this.time, cam.position.x, cam.position.z);
     this.props?.update(this.time);
     // flashlight follows the camera with a little lag-free offset
-    this.flash.visible = this.flashOn;
+    const flashOut = this.sim.inv.has('flashlight') && this.sim.flash.on ? this.sim.flash.output(this.time) : 0;
+    this.flash.visible = flashOut > 0.01; this.flash.intensity = 55 * flashOut;
+    this.ev.sync(this.sim.ew, this.time, dt);
+    this.fx.update(dt, cam, flashOut > 0.4);
+    this.hubObj?.update(this.time, p.x, p.z);
+    const nv = this.sim.cam.nightVision;
+    gfx.nightVision = nv; this.ambient.intensity = this.ambientBase * (nv ? 4 : 1);
+    // flare + glowstick light (fixed light count: no shader recompiles)
+    const fl = this.sim.flares[this.sim.flares.length - 1], gl = this.sim.glows[this.sim.glows.length - 1];
+    for (const [i, src] of [fl, gl].entries()) { const l = this.dyn[i]; if (src) { l.position.set(src.x, 0.4, src.z); l.intensity = (i === 0 ? 16 : 5) * Math.min(1, src.t / 4); } else l.intensity = 0; }
     this.flash.position.copy(cam.position).addScaledVector(this.fwd, 0.1);
     this.flashTarget.position.copy(cam.position).addScaledVector(this.fwd, 6);
     // flicker lamp emissive per instance (only flickering ones)
@@ -289,7 +341,7 @@ export class LevelScene {
     this.wpLeds.forEach((l, i) => { if (!this.sim.activatedWaypoints.has(i)) l.color.set(0xff2010).multiplyScalar(Math.sin(this.time * 5) > 0 ? 5 : 0.1); });
     const a = svc.audio();
     if (a?.running) a.setListener(cam.position.x, cam.position.y, cam.position.z, this.fwd.x, this.fwd.z);
-    gfx.fear = this.fear;
+    gfx.fear = this.fearBox.v;
     svc.gfx.setScene(this.scene);
     gfx.render(dt);
   }
@@ -328,6 +380,8 @@ export class LevelScene {
   teleport(x: number, z: number): void { this.sim.player.place(x, z, this.sim.player.yaw); }
 
   dispose(): void {
+    document.body.classList.remove('hiding');
+    this.ev.dispose(); this.hubObj?.dispose();
     for (const h of this.humHandles) h.stop(0.3);
     for (const k of [...this.chunks.keys()]) this.removeChunk(k);
     this.props?.dispose();

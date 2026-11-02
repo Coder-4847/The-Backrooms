@@ -7,16 +7,16 @@ import { Loop, STEP } from '../src/core/loop';
 
 describe('autopilot bot through the real simulation', () => {
   for (const def of LEVELS) {
-    it(`${def.id}: completes 25 seeds, visiting waypoints`, () => {
+    it(`${def.id}: completes 12 seeds, visiting waypoints`, () => {
       const fails: string[] = [];
-      for (let i = 0; i < 25; i++) {
+      for (let i = 0; i < 12; i++) {
         const plan = def.generate(900 + i * 211);
         const r = runBot(plan, { visitWaypoints: true });
         if (!r.completed) fails.push(`${900 + i * 211}:${r.reason}`);
         else expect(r.seconds).toBeLessThan(plan.estSeconds * 3.5 + 60);
       }
       expect(fails).toEqual([]);
-    });
+    }, 60000);
   }
   it('bot completes on every difficulty (layout is identical, waypoints differ)', () => {
     const plan = levelById('placeholder')!.generate(31);

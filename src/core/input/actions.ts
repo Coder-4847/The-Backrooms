@@ -2,7 +2,7 @@
 
 export const ACTIONS = [
   'Sprint', 'Crouch', 'Interact', 'UseItem', 'Flashlight', 'Camcorder', 'Inventory', 'Journal',
-  'HoldBreath', 'PeekLeft', 'PeekRight', 'Throw', 'Pause', 'Jump', 'Console',
+  'HoldBreath', 'PeekLeft', 'PeekRight', 'Throw', 'Pause', 'Jump', 'Console', 'Slot1', 'Slot2', 'Slot3', 'Slot4', 'NextItem',
 ] as const;
 export type Action = (typeof ACTIONS)[number];
 export type DeviceKind = 'kbm' | 'gamepad' | 'touch';
@@ -30,6 +30,8 @@ export const DEFAULT_BINDINGS: Bindings = {
   Pause: { kb: ['Escape', 'KeyP'], pad: [PAD.Start] },
   Jump: { kb: ['Space'], pad: [PAD.B] },
   Console: { kb: ['Backquote'], pad: [] },
+  Slot1: { kb: ['Digit1'], pad: [] }, Slot2: { kb: ['Digit2'], pad: [] }, Slot3: { kb: ['Digit3'], pad: [] }, Slot4: { kb: ['Digit4'], pad: [] },
+  NextItem: { kb: [], pad: [PAD.LT] },
 };
 
 export function cloneBindings(b: Bindings): Bindings {

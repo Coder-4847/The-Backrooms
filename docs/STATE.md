@@ -1,52 +1,51 @@
 # STATE (living). Spec: `docs/MASTER.md`. Layout/data flow: `docs/ARCHITECTURE.md`.
 
 ## Where we are
-**Phase 0 (foundation): complete locally, tagged `phase-0`.** Next: wait for "Begin Phase 1" (core systems + Level 0 vertical slice).
+**Phase 1 (core systems + Level 0 vertical slice + Central Hub): complete locally.** Phase 0 is in git history. Next: wait for "Begin Phase 2" (Act 1: Levels 1-5 + Schoolhouse).
 
 ## Commands
 | Command | Purpose |
 |---|---|
 | `npm run dev` | dev server (add `?debug=1` to any build to enable the backtick debug console + `window.__game`) |
-| `npm test` | Vitest: rng, difficulty table, save round-trip/backup/migration/export, settings, input logic, quality/adaptive, ending resolver, generation + validators, chunk mesher/streamer, textures, reverb, collision, bot, sim rules (77 tests) |
+| `npm test` | Vitest (124 tests): rng, difficulty, saves, settings/input, quality, endings skeleton, generation + validators, mesher/streamer, textures, reverb, collision, bot, sim, **inventory, stats/sanity/hallucinations, lights, noise, Director, Entity Lab AI scenarios, Level 0 in the real sim, hub** |
 | `npm run validate:levels [-- --seeds=200 --level=id]` | all validators over N seeds + the autopilot bot on 40 seeds; pass/fail table |
 | `npm run bot -- --level=placeholder --seed=123 [--waypoints --difficulty=hard]` | headless autopilot run |
-| `npm run smoke` | Playwright e2e: menus, settings persistence across reload, new game, slot saved, keyboard movement, debug console, pause |
+| `npm run smoke` | Playwright e2e of the real flow: settings persistence, New Game -> hub, dialogue gives an item, inventory panel, door panel -> Level 0, hiding, hound tell-before-bite, death -> rewind -> respawn, note reader, level completion -> hub with next door unlocked |
 | `npm run shots [-- --levels=testroom --tiers=ultra,potato]` | screenshots to `./shots` |
 | `npm run perf [-- --levels=placeholder --tiers=... --seconds=8 --throttle=4]` | flythrough per tier; table + budget check; writes `reports/perf.json` |
 | `npm run verify` | typecheck + lint + tests + level validators (what CI runs, plus build) |
 
-## Built in Phase 0
-- Vite + TS + three.js, ESLint, Vitest, Playwright tooling, PWA (manifest, icons, service worker with versioned cache, update on next load).
-- Deploy workflow (`.github/workflows/deploy.yml`): typecheck, lint, tests, validators, build on every push; deploy job only on `main` / manual run. `base` comes from the repo name.
-- Core: seeded RNG (sfc32 + order-independent hashes), fixed 60 Hz loop with interpolation, typed events, schema-driven settings (graphics/audio/controls/gameplay/accessibility, persisted in the profile), 5-tier difficulty table + scare intensity, storage (IndexedDB -> localStorage -> memory), saves (3 slots, profile, atomic temp+verify+swap writes, rolling backup, migrations, export/import/wipe, permadeath helper).
-- Input: one action map for keyboard+mouse (pointer lock), gamepad (dead zone, curve, glyph families, rumble), touch (dynamic joystick, look zone, contextual buttons, handedness/size/opacity, gyro option); auto device switching; rebinding UI.
-- Generation: graph-first generator (BSP rooms -> adjacency -> spanning tree -> critical path -> lock/key dependency solver -> loops that cannot bypass locks -> waypoint candidates -> nests -> loot -> nav graph -> time estimate), validators, waypoint selection per difficulty, chunk mesher (pure, workers, inline fallback), chunk streamer, worker pool.
-- Render: tiers (Ultra..Potato), Auto benchmark (vsync-independent) + hardware caps, dynamic resolution + automatic tier-down/offer-up, procedural PBR materials (wallpaper, carpet, concrete, tile, metal, ceiling, stain), light pool, flicker, GTAO, bloom, VHS pass (grain, scanlines, chromatic aberration, tracking glitch, vignette, grade, colour-blind modes), dust, fog, shadows, flashlight, PMREM environment.
-- Audio: buses + limiter, HRTF panner, occlusion low-pass, procedural reverb IR per room size/material, synthesized hum, footsteps per surface, drips, creaks, heartbeat, beacon, warp, UI clicks, captions.
-- UI: content warning, live-3D title menu, new game (slot, 5 difficulties with descriptions, seed), continue, manage/import/export saves, full settings with rebinding, HUD (REC/timestamp/stamina/prompt/toasts/captions), pause, loading screen, debug console.
-- Dev levels: `testroom` (props gallery, coloured/flickering lights, glowing orb, pedestals per material) and `placeholder` (locks, keys, waypoints, exit), both validated and bot-completable.
+## Built in Phase 1
+- **Systems (headless, tested):** item table (flashlight, camcorder, battery, almond water, crackers, bandage, glowstick, flare, keys), grid backpack + 4-slot hotbar + weight + hub stash + death penalties, stats (health/sanity/hunger/thirst/fear scaled by the difficulty table), hallucination events, flashlight (battery, flicker, shake-to-recharge) + camcorder night vision with own battery, noise propagation along the room graph with wall damping, Director v1 (build/peak/release/quiet, guaranteed breathers, ambient events, intensity x Scare Intensity).
+- **Entity framework:** perception (sight cone limited by light/crouch/cover/hiding, hearing via noise field), A* on the nav graph (doorway "mouth" nodes make paths cross doors perpendicular), states (lurk/patrol/investigate/hunt/tell/chase/search/flee), every attack preceded by a `tell` whose length comes from the difficulty table, observe-only mode for bots, Entity Lab harness.
+- **Entities:** Stick (frozen while watched, advances unseen, backs off from bright light, touch after a tell), Hound pack (investigates noise, growl tell, flanking chase, loses interest if you hide/quiet, scatters from flares). Procedural bodies from lofted tubes + ellipsoids with procedural gait/twitch, detail by tier. FM/formant synthesized growl, ticking tell, whispers, thud.
+- **Level 0:** 120x100 m, ~64 rooms (varied sizes/halls/dead ends/supply room/nests), 4 wallpaper/concrete variants, damp carpet, lockers and desks to hide in, 6 notes, 1 key + door, 2-3 waypoints, stick + hound-pack ecology, validated on 300 seeds + bot 40/40.
+- **Central Hub:** procedural tunnel that extends with the frontier, 25 doors (alcoves both sides; sealed / continue / replay / not-built states, nameplates with best time + difficulty), Almond Outpost wing (outpost hall, stash/crafting room, notice-board/bestiary/gallery room), 3 survivors with dialogue (Marlow, Ines, Tobias; gifts once), stash lockers, wing gates sealed until their act.
+- **Flow:** New Game -> Hub; door panel (Continue Campaign / Replay with difficulty + seed); checkpoint autosave (snapshot of pickups/doors/keys + inventory + stats); death -> tape rewind -> reload from checkpoint with the difficulty penalty (Hardcore permadeath deletes the slot, keeps the profile); replays cap loot carry-back (6) and never permadeath; level completion saves best times/frontier and returns to the hub at that door; manual save at waypoints per difficulty rule (API only, no button yet).
+- **UI:** hotbar, vitals (fade when healthy), flashlight/camcorder battery, noise meter, prompt glyphs, inventory screen (drag and drop, hotbar assign, use/drop), journal (grouped by level, searchable), note reader, dialogue with voice blips, stash, door panel, tape-rewind death overlay, hiding overlay.
+- **Player:** lean (Q/R), hold breath (B), weight-scaled stamina regen, hotbar keys 1-4 + wheel; **input fix:** key taps shorter than one frame are latched (found by the smoke test at low fps).
+- Debug: `give`, `spawn`, `kill`, `sanity`, `hunger`, `intensity`, `die`, `win`, `hub`, `unlock`, `director` now work.
 
 ## Perf (this environment has NO GPU: Chromium uses SwiftShader software rendering)
-Frame-time numbers below are **not representative** and the budgets for them are not judged. Draw calls / triangles are real. `placeholder`, 1280x720 flythrough:
-| tier | draws avg/max | tris | load (gen+textures) | scale |
+Frame-time numbers are **not representative** and are not judged. Draw calls / triangles / generation times are real. Level 0 flythrough, 1280x720, entities active:
+| tier | draws avg/max | tris (max) | load (gen + textures) | scale |
 |---|---|---|---|---|
-| potato | 16/28 | ~1k | ~0.1 s | 0.50 |
-| medium | 67/102 | ~3k | ~0.5 s | 0.85 |
-| ultra | 116/166 | ~4k | ~1.3 s | 1.00 |
-All far below the spec budgets (Ultra < 1500 draws; Potato < 150 draws, < 150k tris). Real-GPU frame times, JS heap and mobile numbers still need measuring on hardware (run `npm run perf` locally).
-Auto picked **potato** here because the GPU string is SwiftShader (by design).
+| potato | 40/42 | ~2k | 0.14 s | 0.50 |
+| low | 65/70 | ~3k | 0.30 s | 0.70 |
+| medium | 120/135 | ~4k | 0.45 s | 0.85 |
+| high | 215/264 | ~7k | 1.6 s | 1.00 |
+| ultra | 297/356 | ~12k | 1.4 s | 1.00 |
+All far below the budgets (Ultra < 1500 draws; Potato < 150 draws and < 150k tris). Run `npm run perf` on real hardware for frame times, 1% lows and heap.
 
 ## Known gaps / honest notes
-- **Branch/deploy:** this session is restricted to branch `claude/new-session-5lcqg5`; the spec says `main`. Work is pushed to the assigned branch. CI runs there; the deploy job only runs on `main` or manual dispatch (the `github-pages` environment normally only allows the default branch). To go live: merge to `main`, set **Settings > Pages > Source = GitHub Actions**. Live URL then: https://coder-4847.github.io/The-Backrooms/
-- Not yet implemented from the graphics list (planned for the Level 0 look pass in Phase 1+): SSR, TAA, depth of field, motion blur, volumetric fog/light shafts, auto-exposure, lens dirt/droplets/frost, parallax/triplanar detail, wall decals (floor stain decals exist), baked-style GI/light probes, LOD for props/entities, texture arrays/atlases. Settings only list effects that exist.
-- Ultra procedural textures are 1024 px (spec says 2k): kept for load time; 2k hero materials can be added when worth it.
-- VSync cannot be controlled by web pages: only the FPS cap exists. WebGPU path not started (WebGL2 only, stays the default).
-- Runtime tier change re-configures post/resolution/shadows immediately; textures/geometry detail/light count apply on the next level load.
-- Touch: edit-layout mode not built (handedness, size, opacity, one-handed exist). Gamepad/touch were unit-tested at the logic level and Playwright-tested only for keyboard; real device testing is pending.
-- Ending resolver is a tested skeleton (all 6 endings reachable by flags); content and final conditions come in Phase 5.
-- Debug commands needing Phase 1+ systems (`give`, `spawn`, `kill`, `sanity`, `hunger`, `intensity`, `ending`) are registered and say which phase they need.
-- Perception cones / noise events overlays arrive with the entity and noise systems.
-- Continue resumes the placeholder level (no hub yet); the Central Hub is Phase 1.
+- **Deploy:** see the last section of the report; the `github-pages` environment only deploys from `main`.
+- Level 0 **sublevels** and the vault move are not built (no low obstacles exist yet). Hub kitchen, crafting table, camcorder customization, bestiary content beyond a seen-count, and the ending gallery are placeholders (crafting/kitchen arrive with Phase 2 recipes; endings Phase 5). Hub wings 2 and 3 are sealed gates (their content is Phase 3/4).
+- Level 0 `targetSeconds` is [150, 1800]: the critical path takes ~4 min for a bot; the intended 20-25 min comes from exploring, hiding, note reading, and entity pacing. Tune after human playtesting.
+- Entities use sight/hearing only (no smell/vibration yet). Procedural bodies use lofted tubes and ellipsoids; SDF/metaball meshing is not used. Entity LOD beyond detail-by-tier is not built.
+- Inventory screen supports mouse/touch drag and focusable buttons; there is no gamepad cursor mode yet. Manual save has no button (the flow API exists).
+- Camcorder night vision is a screen-space amplification + ambient boost, not a separate lighting model. Hallucination "UI glitches" are a glitch pulse + toast.
+- Remaining items from the Phase 0 graphics gap list are unchanged (SSR, TAA, DoF, motion blur, volumetrics, auto-exposure, lens effects, GI probes).
+- Frame times are still software-rendered here (no GPU), so only draw calls / triangles / generation times are meaningful.
 
 ## Key decisions
 - Walls are 0.2 m thick, rooms are BSP tiles (no gaps/overlaps by construction), doors are real openings with reveals; colliders for the whole level are built up front (cheap), only visuals stream.

@@ -37,25 +37,18 @@ function route(plan: LevelPlan, from: Vec2, to: Vec2, openLocks: Set<string>, is
   if (!isFinite(dist[goal])) return null;
   const nodes: number[] = [];
   for (let n = goal; n !== -1; n = prev[n]) nodes.unshift(n);
-  const roomCount = plan.rooms.length;
-  const path: Step[] = [];
-  nodes.forEach((n, i) => {
-    // door nodes sit at index roomCount + connection id. Walk through them perpendicular to the wall
-    // (approach point, door, exit point) so the player's circle never clips a jamb on a diagonal.
-    const conn = n >= roomCount ? plan.connections[n - roomCount] : null;
-    if (!conn) { path.push({ to: N[n].pos }); return; }
-    const a = N[nodes[i - 1] ?? n].pos, b = N[nodes[i + 1] ?? n].pos;
-    const sign = conn.axis === 'z' ? Math.sign(b.x - a.x) || 1 : Math.sign(b.z - a.z) || 1;
-    const off = (k: number): Vec2 => (conn.axis === 'z' ? { x: conn.door.x + sign * k, z: conn.door.z } : { x: conn.door.x, z: conn.door.z + sign * k });
-    path.push({ to: off(-0.9) }, { to: conn.door, act: !!(conn.lock && !isOpen(conn.id)) }, { to: off(0.9) });
+  // door nodes of still-closed locked doors need an interaction (nav mouths already make the approach perpendicular)
+  const path: Step[] = nodes.map((n) => {
+    const conn = N[n].kind === 'door' ? plan.connections[N[n].connection!] : null;
+    return { to: N[n].pos, act: !!(conn?.lock && !isOpen(conn.id)) };
   });
   return [...path.slice(1), { to }];
 }
 
 export interface BotResult { completed: boolean; seconds: number; reason?: string; keysUsed: number; waypointsVisited: number }
 
-export function runBot(plan: LevelPlan, opts: { difficulty?: DifficultyId; maxSeconds?: number; visitWaypoints?: boolean } = {}): BotResult {
-  const sim = new LevelSim(plan, opts.difficulty ?? 'normal');
+export function runBot(plan: LevelPlan, opts: { difficulty?: DifficultyId; maxSeconds?: number; visitWaypoints?: boolean; /** entities observe only (default) or act */ mode?: 'active' | 'observe' } = {}): BotResult {
+  const sim = new LevelSim(plan, opts.difficulty ?? 'normal', { mode: opts.mode ?? 'observe' });
   const frame = emptyFrame();
   const maxSteps = Math.round((opts.maxSeconds ?? 2400) / STEP);
   const p = sim.player;
