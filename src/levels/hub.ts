@@ -67,6 +67,7 @@ export function generateHub(seed: number, frontier = 0): LevelPlan {
     { id: 'marlow', pos: { x: -6, z: 2 }, yaw: Math.PI / 2 },
     { id: 'ines', pos: { x: -20, z: -1.5 }, yaw: 0 },
     { id: 'tobias', pos: { x: -14, z: 15 }, yaw: Math.PI / 2 },
+    { id: 'june', pos: { x: tunnelLen + 8, z: 6 }, yaw: Math.PI / 2 },
   ];
   const gates: HubData['gates'] = [
     { act: 2, box: { x0: tunnelLen - 0.1, x1: tunnelLen + 0.1, z0: 1.5, z1: 4.5 } },

@@ -19,7 +19,7 @@ describe('Act 1 levels', () => {
   it('registers all six, in campaign order after Level 0', () => {
     for (const id of ACT1) expect(isImplemented(id), id).toBe(true);
     expect(CAMPAIGN.slice(0, 7).map((c) => c.id)).toEqual(['level0', ...ACT1]);
-    expect(LEVELS.filter((l) => !l.dev).length).toBe(7);
+    expect(LEVELS.filter((l) => !l.dev).length).toBeGreaterThanOrEqual(7);
   });
   it('each level has a distinct look and the right ecology', () => {
     const looks = new Set(ACT1.map((id) => JSON.stringify(levelById(id)!.look.fogColor)));

@@ -3,8 +3,8 @@
 A single-player, procedurally generated, found-footage Backrooms survival horror game that runs in the browser
 (TypeScript + Three.js, WebGL2). Everything (levels, textures, audio, entities) is generated in code from a seed.
 
-**Status: Phase 2 (Act 1).** Engine, tooling, saves, input, audio and render pipeline (Phase 0); core survival systems, Level 0 and the
-procedural Central Hub (Phase 1); Levels 1-5 and the Schoolhouse with new entities, puzzles, crafting and a companion (Phase 2).
+**Status: Phase 3 (Act 2).** Engine, tooling, saves, input, audio and render pipeline (Phase 0); core survival systems, Level 0 and the
+procedural Central Hub (Phase 1); Levels 1-5 and the Schoolhouse with new entities, puzzles, crafting and a companion (Phase 2); eight Act 2 levels with water and breath, darkness, light sections and eight more entities (Phase 3).
 Later phases are in `docs/MASTER.md`.
 
 ## Play
@@ -30,6 +30,7 @@ npm run build && npm run preview
 | Throw (distraction) | T | RB | ↗ |
 | Hotbar / next item | 1-4 / wheel | LT | tap the slot |
 | Lean / hold breath | Q R / B | D-pad / LB | |
+| Dive (in deep water) | Crouch | R3 | ▽ |
 | Backpack / journal | I or Tab / J | View / D-pad left | ▤ |
 | Pause | Esc | Menu | ❙❙ |
 | Debug console | ` (backtick) | | |

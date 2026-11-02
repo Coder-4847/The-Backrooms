@@ -27,7 +27,7 @@ export interface GraphOptions {
   loot: number;
   doorWidth?: number;
   /** Lock themes cycled over the locks along the critical path (default: all brass keys). */
-  lockStyles?: ('key' | 'fuse' | 'valves' | 'pry')[];
+  lockStyles?: ('key' | 'fuse' | 'valves' | 'pry' | 'rope' | 'sequence' | 'breaker')[];
   /** Weighted loot table; defaults to batteries/water/bandages/crackers/glowsticks. */
   lootTable?: [string, number][];
 }
@@ -192,8 +192,8 @@ export function generateGraphLevel(seed: number, o: GraphOptions): LevelPlan {
   lockEdgeIdx.sort((x, y) => x - y);
   const styles = o.lockStyles?.length ? o.lockStyles : (['key'] as const);
   const styleOf = (i: number) => styles[i % styles.length];
-  const lockPrefix = { key: 'key', fuse: 'fuse', valves: 'valves', pry: 'pry' } as const;
-  const locks: { id: string; edge: number; pathIdx: number; style: 'key' | 'fuse' | 'valves' | 'pry' }[] = lockEdgeIdx.map((pathIdx, i) => ({ id: `${lockPrefix[styleOf(i)]}${i + 1}`, edge: critEdges[pathIdx], pathIdx, style: styleOf(i) }));
+  const lockPrefix = { key: 'key', fuse: 'fuse', valves: 'valves', pry: 'pry', rope: 'rope', sequence: 'seq', breaker: 'breaker' } as const;
+  const locks: { id: string; edge: number; pathIdx: number; style: 'key' | 'fuse' | 'valves' | 'pry' | 'rope' | 'sequence' | 'breaker' }[] = lockEdgeIdx.map((pathIdx, i) => ({ id: `${lockPrefix[styleOf(i)]}${i + 1}`, edge: critEdges[pathIdx], pathIdx, style: styleOf(i) }));
   locks.forEach((l) => { connByAdj.get(l.edge)!.lock = l.id; });
 
   // keys: place in a room reachable from spawn without crossing lock i or any later lock; prefer off-path rooms
@@ -226,7 +226,21 @@ export function generateGraphLevel(seed: number, o: GraphOptions): LevelPlan {
       (noteText ??= {})[puzzle.hintNote] = { title: 'Maintenance tag', text: `VALVE SETTINGS (do not touch)\nA ${sol[0]}   B ${sol[1]}   C ${sol[2]}\n(valves count 0-3, turn clockwise)` };
       return;
     }
-    const keyItem = l.style === 'pry' ? 'crowbar' : l.style === 'fuse' ? l.id : l.id;
+    if (l.style === 'sequence' || l.style === 'breaker') {
+      const n = l.style === 'sequence' ? 4 : 1;
+      const picks = rItems.shuffle([...pool]).slice(0, n);
+      while (picks.length < n) picks.push(pool[0]);
+      const order = rItems.shuffle(Array.from({ length: n }, (_, k) => k));
+      const puzzle: PuzzleDef = { id: `puzzle${i}`, kind: l.style, lock: l.id, hintNote: l.style === 'sequence' ? `seqhint${i}` : '', solution: l.style === 'sequence' ? order : [], parts: picks.map((r, k) => ({ id: `${l.id}P${k}`, room: r, pos: randIn(rooms[r], rItems, 1.5), states: 1 })) };
+      (puzzles ??= []).push(puzzle);
+      if (l.style === 'sequence') {
+        const hr = rItems.pick(pool);
+        items.push({ id: `item${itemN++}`, item: puzzle.hintNote, kind: 'note', room: hr, pos: randIn(rooms[hr], rItems) });
+        (noteText ??= {})[puzzle.hintNote] = { title: 'Reboot checklist', text: `REBOOT ORDER (any other order resets the rack)\n${order.map((k) => `SERVER ${'ABCD'[k]}`).join('  ->  ')}` };
+      }
+      return;
+    }
+    const keyItem = l.style === 'pry' ? 'crowbar' : l.style === 'rope' ? 'grapple' : l.id;
     items.push({ id: `item${itemN++}`, item: keyItem, kind: 'key', room, pos: randIn(rooms[room], rItems), unlocks: l.id });
   });
 

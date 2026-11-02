@@ -27,8 +27,8 @@ export function simulateReach(plan: LevelPlan): { rooms: Set<number>; keys: Set<
     // a puzzle is solved once every part and its hint note are reachable
     for (const pz of plan.puzzles ?? []) {
       if (keys.has(pz.lock)) continue;
-      const note = plan.items.find((i) => i.item === pz.hintNote);
-      if (pz.parts.every((p) => reached.has(p.room)) && note && reached.has(note.room)) { keys.add(pz.lock); changed = true; }
+      const note = pz.hintNote ? plan.items.find((i) => i.item === pz.hintNote) : null;
+      if (pz.parts.every((p) => reached.has(p.room)) && (!pz.hintNote || (note && reached.has(note.room)))) { keys.add(pz.lock); changed = true; }
     }
   }
   return { rooms: reached, keys };
@@ -110,6 +110,11 @@ export function validatePlan(def: Pick<LevelDef, 'targetSeconds'>, plan: LevelPl
     if (plan.items.some((i) => Math.hypot(i.pos.x - h.pos.x, i.pos.z - h.pos.z) < 1)) fail(`hide ${h.id} on top of an item`);
   }
   for (const s of plan.entitySlots) if (s.entity && s.role === 'nest' && (plan.criticalPath.slice(0, 2).includes(s.room))) fail('entity nest on the first stretch of the route');
+
+  // water: valid rooms; the critical path may swim but never needs a dive (flooded rooms are optional side areas)
+  for (const w of plan.water ?? []) { if (!byId.has(w.room)) fail(`water in missing room ${w.room}`); if (w.depth === 'flooded' && plan.criticalPath.includes(w.room)) fail(`flooded room ${w.room} on the critical path`); }
+  for (const u of plan.unlit ?? []) if (!byId.has(u)) fail('unlit room missing');
+  for (const sct of plan.sections ?? []) if (!plan.connections.some((c) => c.lock === sct.lock)) fail(`section ${sct.lock} has no lock`);
 
   // props: inside their room, never on nav nodes, doors, items or puzzle parts (so nothing is blocked)
   const boxDist = (b: { x: number; z: number; w: number; d: number }, x: number, z: number) => Math.hypot(Math.max(Math.abs(x - b.x) - b.w / 2, 0), Math.max(Math.abs(z - b.z) - b.d / 2, 0));

@@ -31,6 +31,9 @@ export class Player {
   reduceShake = false;
   /** Stamina regeneration multiplier (backpack weight lowers it). */
   regenScale = 1;
+  /** Water: speed multiplier and swim state (surface = head above water, dive = head under). */
+  waterMul = 1;
+  swim: 'none' | 'surface' | 'dive' = 'none';
   /** -1 (lean left) .. 1 (lean right), smoothed. */
   lean = 0;
   holdCrouchToggle = false; holdSprintToggle = false;
@@ -69,10 +72,11 @@ export class Player {
     else this.sprintToggle = f.down.Sprint;
     const moving = wl > 0.1;
     this.exhausted = this.exhausted ? this.stamina < 25 : this.stamina <= 0;
+    if (this.swim !== 'none') { this.crouching = this.swim === 'dive'; this.sprintToggle = false; }
     this.sprinting = this.sprintToggle && moving && !this.crouching && !this.exhausted && f.moveY > 0.3;
     this.stamina = Math.max(0, Math.min(100, this.stamina + (this.sprinting ? -14 : (moving ? 6 : 12) * this.regenScale) * dt));
 
-    const target = this.crouching ? PLAYER.crouch : this.sprinting ? PLAYER.sprint : PLAYER.walk;
+    const target = (this.crouching ? PLAYER.crouch : this.sprinting ? PLAYER.sprint : PLAYER.walk) * this.waterMul;
     const accel = 1 - Math.exp(-10 * dt);
     this.vx += (wishX * target - this.vx) * accel;
     this.vz += (wishZ * target - this.vz) * accel;
@@ -81,7 +85,7 @@ export class Player {
 
     const leanT = (f.down.PeekRight ? 1 : 0) - (f.down.PeekLeft ? 1 : 0);
     this.lean += (leanT - this.lean) * (1 - Math.exp(-10 * dt));
-    const eyeT = this.crouching ? PLAYER.eyeCrouch : PLAYER.eye;
+    const eyeT = this.swim === 'dive' ? 0.5 : this.swim === 'surface' ? 1.05 : this.crouching ? PLAYER.eyeCrouch : PLAYER.eye;
     this.eye += (eyeT - this.eye) * (1 - Math.exp(-12 * dt));
     this.bob += this.speed * dt * (this.sprinting ? 1.5 : 1.15);
     this.stride += this.speed * dt;

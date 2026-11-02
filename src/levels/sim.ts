@@ -32,6 +32,9 @@ export type SimEvent =
   | { type: 'violation'; rule: string }
   | { type: 'companion'; what: 'recruited' | 'hurt' | 'lost' }
   | { type: 'talk'; id: number }
+  | { type: 'lights'; lock: string; rooms: number[] }
+  | { type: 'seq'; puzzle: string; ok: boolean; progress: number }
+  | { type: 'splash'; x: number; z: number }
   | { type: 'pickup'; item: ItemSpawn }
   | { type: 'full'; item: ItemSpawn }
   | { type: 'note'; id: string }
@@ -60,7 +63,7 @@ export interface SimSnapshot { collected: string[]; keys: string[]; openDoors: n
 
 export const REACH = 1.9;
 
-const lockHint = (lock: string): string => lock.startsWith('fuse') ? 'Dead transformer bay: needs a fuse' : lock.startsWith('pry') ? 'Stuck door: needs a crowbar' : lock.startsWith('valves') ? 'Sealed: the valves must be aligned' : 'Locked';
+const lockHint = (lock: string): string => lock.startsWith('fuse') ? 'Dead transformer bay: needs a fuse' : lock.startsWith('pry') ? 'Stuck door: needs a crowbar' : lock.startsWith('valves') ? 'Sealed: the valves must be aligned' : lock.startsWith('rope') ? 'Chasm: needs a grappling hook' : lock.startsWith('seq') ? 'Rack lock: servers must be rebooted in order' : lock.startsWith('breaker') ? 'Dead section: flip its breaker' : 'Locked';
 
 export class LevelSim {
   readonly world = new StaticWorld();
@@ -81,6 +84,12 @@ export class LevelSim {
   x: SimExtras;
   diff: DifficultyDef;
   hidden: HideSpot | null = null;
+  /** Rooms whose lamps are currently off (dark levels / unrestored garage sections). */
+  unlit: Set<number>;
+  private water = new Map<number, 'wade' | 'swim' | 'flooded'>();
+  /** Depth of the room the player stands in, for footsteps and visuals. */
+  waterHere: 'wade' | 'swim' | 'flooded' | null = null;
+  outOfAir = false;
   flares: { x: number; z: number; t: number }[] = [];
   glows: { x: number; z: number; t: number }[] = [];
   dead = false;
@@ -122,6 +131,8 @@ export class LevelSim {
     for (const it of plan.items) if (it.kind === 'loot' && new Rng(deriveSeed(seed, it.id)).next() >= keep) this.collected.add(it.id);
     this.ew = new EntityWorld(plan, this.world, seed);
     if (opts.spawnEntities !== false) this.ew.spawnFromPlan();
+    this.unlit = new Set(plan.unlit ?? []);
+    for (const w of plan.water ?? []) this.water.set(w.room, w.depth);
     this.x = new SimExtras(this);
     for (const pr of plan.props ?? []) this.world.add(`prop:${pr.x},${pr.z}`, [{ x0: pr.x - pr.w / 2, x1: pr.x + pr.w / 2, z0: pr.z - pr.d / 2, z1: pr.z + pr.d / 2 }]);
     this.percept = { x: 0, z: 0, yaw: 0, hidden: false, crouching: false, noise: 0, light: 0.6, flashOn: false, flashPower: 0, flares: [] };
@@ -144,7 +155,10 @@ export class LevelSim {
   emit(e: SimEvent): void { for (const l of this.listeners) l(e); }
 
   /** Light the player stands in 0..1: ceiling lights keep rooms lit; the flashlight adds to it. */
-  get lightLevel(): number { return Math.min(1, 0.5 + this.flash.output(this.time) * 0.3); }
+  get lightLevel(): number {
+    const base = this.plan.dark ? 0.03 : this.unlit.has(this.room) ? 0.12 : 0.5;
+    return Math.min(1, base + this.flash.output(this.time) * 0.3 + (this.glows.length || this.flares.length ? 0.25 : 0));
+  }
   get safeRoom(): boolean {
     if (this.alwaysSafe) return true;
     const r = this.plan.rooms[this.room];
@@ -165,6 +179,15 @@ export class LevelSim {
     p.update(dt, frame, this.world);
     this.room = this.ew.nav.roomAt(p.x, p.z) < 0 ? this.room : this.ew.nav.roomAt(p.x, p.z);
 
+    // water: speed, swimming, diving and breath
+    this.waterHere = this.water.get(this.room) ?? null;
+    const wd = this.waterHere;
+    p.waterMul = wd === 'wade' ? 0.8 : wd === 'swim' ? 0.55 : wd === 'flooded' ? 0.5 : 1;
+    const diving = wd === 'flooded' || (wd === 'swim' && f.down.Crouch);
+    p.swim = wd === 'swim' || wd === 'flooded' ? (diving ? 'dive' : 'surface') : 'none';
+    this.outOfAir = this.stats.updateBreath(dt, diving, this.diff, wd === 'flooded' ? 4 : 3.2);
+    if (wd && p.speed > 0.4 && Math.floor(this.time * 3) !== Math.floor((this.time - dt) * 3)) this.emit({ type: 'splash', x: p.x, z: p.z });
+
     // hotbar + item use + lights
     for (let i = 0; i < 4; i++) if (f.pressed[`Slot${i + 1}` as 'Slot1']) this.inv.selected = i;
     if (f.pressed.NextItem) this.inv.selected = (this.inv.selected + 1) % 4;
@@ -179,7 +202,7 @@ export class LevelSim {
 
     // noise: the player's movement noise is emitted a few times a second
     this.noiseTimer -= dt;
-    const loud = this.hidden ? 0 : p.noise * (breath ? 0.15 : 1);
+    const loud = this.hidden ? 0 : p.noise * (breath ? 0.15 : 1) * (wd === 'wade' || wd === 'swim' ? (diving ? 0.35 : 1.6) : 1);
     if (this.noiseTimer <= 0) { this.noiseTimer = 0.25; if (loud > 0.05) this.noise.emit(this.room, p.x, p.z, loud); }
     this.noise.update(dt);
 
@@ -192,7 +215,7 @@ export class LevelSim {
     const pc = this.percept;
     pc.x = p.x; pc.z = p.z; pc.yaw = p.yaw; pc.hidden = !!this.hidden; pc.crouching = p.crouching; pc.noise = loud;
     pc.light = this.lightLevel; pc.flashOn = this.flash.on && this.inv.has('flashlight'); pc.flashPower = this.flash.output(this.time);
-    pc.flares = this.flares;
+    pc.flares = this.flares; pc.water = this.waterHere !== null;
     this.ctx.pass = this.x.passHeld;
     this.x.update(dt, f);
     this.ew.update(dt, this.ctx);

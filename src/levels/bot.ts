@@ -9,7 +9,7 @@ import { STEP } from '../core/loop';
 import type { LevelPlan, Vec2 } from '../gen/types';
 import type { DifficultyId } from '../core/difficulty';
 
-interface Step { to: Vec2; /** interact when arrived (door/key/exit) */ act?: boolean; /** set a puzzle valve to its solution when arrived */ valve?: { puzzle: string; part: string; target: number } }
+interface Step { to: Vec2; /** interact when arrived (door/key/exit) */ act?: boolean; /** set a puzzle valve to its solution when arrived */ valve?: { puzzle: string; part: string; target: number }; /** press a sequence server / breaker */ press?: { type: 'seq' | 'breaker'; puzzle: string; part: string } }
 
 
 /** Dijkstra over the nav graph avoiding still-locked doors. Returns node ids. */
@@ -52,6 +52,7 @@ export function runBot(plan: LevelPlan, opts: { difficulty?: DifficultyId; maxSe
   const frame = emptyFrame();
   const maxSteps = Math.round((opts.maxSeconds ?? 2400) / STEP);
   const p = sim.player;
+  p.god = true; // the bot proves reachability: water, darkness and entities must not end the run
   let queue: Step[] = [];
   let stuck = 0;
   let last = { x: p.x, z: p.z };
@@ -73,6 +74,12 @@ export function runBot(plan: LevelPlan, opts: { difficulty?: DifficultyId; maxSe
     // exit blocked: unsolved valve puzzles (the bot reads the solution from the plan: it only proves solvability)
     for (const pz of plan.puzzles ?? []) {
       if (sim.keys.has(pz.lock)) continue;
+      if (pz.kind !== 'valves') {
+        const part = pz.kind === 'breaker' ? pz.parts[0] : pz.parts[pz.solution[sim.x.seq.get(pz.id) ?? 0]];
+        const r = route(plan, here, part.pos, open, isOpen);
+        if (r) return [...r.slice(0, -1), { to: part.pos, press: { type: pz.kind === 'breaker' ? 'breaker' : 'seq', puzzle: pz.id, part: part.id } }];
+        continue;
+      }
       for (let i = 0; i < pz.parts.length; i++) {
         const pt = pz.parts[i];
         if (sim.x.valves.get(pt.id) === pz.solution[i]) continue;
@@ -102,8 +109,9 @@ export function runBot(plan: LevelPlan, opts: { difficulty?: DifficultyId; maxSe
     const tgt = queue[0];
     const dx = tgt.to.x - p.x, dz = tgt.to.z - p.z;
     const d = Math.hypot(dx, dz);
-    const arrive = tgt.act || tgt.valve ? 0.9 : 0.35;
+    const arrive = tgt.act || tgt.valve || tgt.press ? 0.9 : 0.35;
     if (d < arrive) {
+      if (tgt.press) { sim.x.handle({ type: tgt.press.type, puzzle: tgt.press.puzzle, part: tgt.press.part }); queue.shift(); continue; }
       if (tgt.valve) {
         const v = tgt.valve;
         for (let k = 0; k < 4 && sim.x.valves.get(v.part) !== v.target; k++) sim.x.handle({ type: 'valve', puzzle: v.puzzle, part: v.part });

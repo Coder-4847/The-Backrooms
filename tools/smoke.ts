@@ -26,7 +26,7 @@ try {
   await waitState('playing');
   check('new game lands in the Central Hub', await ev(() => (window as any).__game.flow.inHub === true));
   const hub = await ev(() => { const p = (window as any).__game.level.plan; return { doors: p.hub.doors.length, npcs: p.hub.npcs.length, stations: p.hub.stations.length }; });
-  check('hub has doors, 3 survivors, stations', hub.doors >= 4 && hub.npcs === 3 && hub.stations >= 7, JSON.stringify(hub));
+  check('hub has doors, 3 survivors, stations', hub.doors >= 4 && hub.npcs === 4 && hub.stations >= 7, JSON.stringify(hub));
   check('starter inventory (flashlight, camcorder)', await ev(() => { const i = (window as any).__game.level.sim.inv; return i.has('flashlight') && i.has('camcorder'); }));
 
   // talk to Marlow and take the battery
@@ -104,6 +104,20 @@ try {
   await page.keyboard.press('Escape'); await panelClosed();
   await page.keyboard.press('KeyT'); await page.waitForTimeout(300);
   check('throwing uses the distraction and makes noise', await ev(() => { const L = (window as any).__game.level; return L.sim.inv.count('distraction') === 0 && L.sim.noise.events.length > 0; }));
+  // ---- Act 2: dark level, water + breath, garage breakers ----
+  const startL = (id: string) => ev(async () => null).then(() => page.evaluate(async (lvl) => { const g = (window as any).__game; await g.flow.startLevel(lvl, 'ACT2-SMOKE', 'normal', { mode: 'replay', index: 7 }); return { id: g.level.def.id, dark: !!g.level.plan.dark, ents: g.level.sim.ew.entities.map((e: any) => e.def.id), water: (g.level.plan.water ?? []).length }; }, id));
+  const l6 = await startL('level6');
+  check('Level 6 is dark with Lurkers', l6.id === 'level6' && l6.dark && l6.ents.includes('lurker'), JSON.stringify({ ...l6, ents: [...new Set(l6.ents)] }));
+  const l7 = await startL('level7');
+  check('Level 7 has water and a Leviathan', l7.id === 'level7' && l7.water > 3 && l7.ents.includes('leviathan'));
+  await ev(() => { const g = (window as any).__game; const L = g.level; L.sim.ew.entities.length = 0; const w = L.plan.water.find((q: any) => q.depth === 'flooded'); const r = L.plan.rooms[w.room]; L.sim.player.god = false; L.sim.player.place(r.x + r.w / 2, r.z + r.d / 2); });
+  await page.waitForTimeout(2500);
+  check('diving drains breath and the AIR bar appears', await ev(() => (window as any).__game.level.sim.stats.breath) < 99 && (await page.locator('.vitals').innerText()).includes('AIR'));
+  const l4 = await startL('garage');
+  check('Garage has unlit sections, breakers and Smilers', l4.id === 'garage' && l4.ents.includes('smiler'));
+  await ev(() => { const g = (window as any).__game; const L = g.level; L.sim.ew.entities.length = 0; const pz = L.plan.puzzles[0]; const pt = pz.parts[0]; L.sim.player.place(pt.pos.x + 0.9, pt.pos.z); });
+  await page.keyboard.press('KeyE'); await page.waitForTimeout(800);
+  check('flipping a breaker relights a section', await ev(() => { const L = (window as any).__game.level; return L.sim.keys.has(L.plan.puzzles[0].lock); }));
   check('no page errors', errors.length === 0, errors.slice(0, 3).join(' | '));
 } finally { await browser.close(); proc.kill(); }
 console.log(failed ? `\n${failed} check(s) failed` : '\nsmoke ok');

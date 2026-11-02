@@ -1,13 +1,13 @@
 # STATE (living). Spec: `docs/MASTER.md`. Layout/data flow: `docs/ARCHITECTURE.md`.
 
 ## Where we are
-**Phase 2 (Act 1: Levels 1-5 + Schoolhouse): complete locally.** Phases 0-1 are in git history. Next: wait for "Begin Phase 3" (Act 2: Levels 6, 7, 8, Garage, 37, Sewers, Hospital, Server Farm).
+**Phase 3 (Act 2: Levels 6, 7, 8, Garage, 37, Sewers, Hospital, Server Farm + Hub 2): complete locally.** Phases 0-2 are in git history. Next: wait for "Begin Phase 4" (Act 3: Levels 16-25, the climax).
 
 ## Commands
 | Command | Purpose |
 |---|---|
 | `npm run dev` | dev server (add `?debug=1` to any build to enable the backtick debug console + `window.__game`) |
-| `npm test` | Vitest (163 tests, incl. Phase 2: Act 1 levels, puzzles, new entities, crafting, tools, companion, rules): rng, difficulty, saves, settings/input, quality, endings skeleton, generation + validators, mesher/streamer, textures, reverb, collision, bot, sim, **inventory, stats/sanity/hallucinations, lights, noise, Director, Entity Lab AI scenarios, Level 0 in the real sim, hub** |
+| `npm test` | Vitest (204 tests, incl. Phase 3: Act 2 levels, water/breath, darkness, light sections, sequence puzzle, 7 new entity labs; Phase 2: Act 1 levels, puzzles, new entities, crafting, tools, companion, rules): rng, difficulty, saves, settings/input, quality, endings skeleton, generation + validators, mesher/streamer, textures, reverb, collision, bot, sim, **inventory, stats/sanity/hallucinations, lights, noise, Director, Entity Lab AI scenarios, Level 0 in the real sim, hub** |
 | `npm run validate:levels [-- --seeds=200 --level=id]` | all validators over N seeds + the autopilot bot on 40 seeds; pass/fail table |
 | `npm run bot -- --level=placeholder --seed=123 [--waypoints --difficulty=hard]` | headless autopilot run |
 | `npm run smoke` | Playwright e2e of the real flow: settings persistence, New Game -> hub, dialogue gives an item, inventory panel, door panel -> Level 0, hiding, hound tell-before-bite, death -> rewind -> respawn, note reader, level completion -> hub with next door unlocked |
@@ -15,7 +15,16 @@
 | `npm run perf [-- --levels=placeholder --tiers=... --seconds=8 --throttle=4]` | flythrough per tier; table + budget check; writes `reports/perf.json` |
 | `npm run verify` | typecheck + lint + tests + level validators (what CI runs, plus build) |
 
-## Built in Phase 2
+## Built in Phase 3
+- **Eight Act 2 levels** (`levels/act2.ts`, data specs): **Level 6 Lights Out** (pitch dark, only start/supply rooms lit, exit sound beacon, 2 Lurkers), **Level 7 Thalassophobia** (flooded ship: swim rooms + optional flooded side rooms, Leviathan), **Level 8 Cave System** (glowing mushroom props, grappling-hook chasm gate, Crawler packs), **The Garage** (3 breakers restore light sections in order, Smilers), **Level 37 Poolrooms** (chill; optional flooded nest with a cache guarded by the Drowned), **Sewers** (sludge, valve flow puzzle, Leech + hound cameo), **Hospital** (flickering wards, ward-question verification, Faceling + real patients), **Server Farm** (reboot-order sequence puzzle, Static). All validate on 200 seeds and are bot-completable.
+- **Water and breath:** per-room depth (`wade` slow + splashy, `swim` surface swimming, `flooded` forces a dive); Crouch dives (quiet, breath drains, surface refills 28/s), out of air hurts; swim eye height, murky underwater fog, water surfaces, splash sounds and noise; flooded rooms are never required by the critical path (validated).
+- **Darkness and light:** `plan.dark`/`plan.unlit` (lamps start off), light level near zero without the flashlight (sanity drains), sections relit by breakers at runtime, sound beacon at the exit, flicker fraction per level (Hospital).
+- **Puzzle kinds added:** `sequence` (reboot order, wrong order resets) and `breaker` (relights a section); lock styles `rope` (grappling hook) and `breaker`/`sequence` with themed door looks and hints. The solver/bot handle all kinds.
+- **Entities (`entities/behaviors2.ts`):** Lurker (blind, feels footsteps through the floor, rumble tell), Leviathan (reacts to splashing, surge tell, mostly submerged), Crawler (light-averse swarm, flees beams/flares), Smiler (advances if stared at or lit wrongly, creeps if you look away, lit rooms drive it off), Drowned (rises only if you linger in water), Leech (attaches in sludge, thrash to shed), Static (blink-hops, screen-tearing tell), Faceling (reuses the Skin-stealer logic with a verification question). Procedural bodies for each; synthesized rumble, water surge, sweet-chord grin, splash.
+- **Hub 2:** June Ashdown (cartographer) in the Waystation wing (opens when the frontier reaches Act 2, i.e. after the Schoolhouse); 24 new notes.
+- **Bot** now runs in god mode (it proves reachability); new puzzle kinds supported.
+
+## Built in Phase 2 (summary)
 - **Level factory** (`levels/factory.ts`): a level is a data spec (size, look, lock styles, props, ecology, notes, guaranteed items, extras) on top of the graph generator. Props are placed along walls and kept clear of doors, nav nodes/edges, items, waypoints and valves (validated); lockers/desks; notes; entity slots.
 - **Six levels** (`levels/act1.ts`), all validated on 200 seeds and bot-completable (40/40):
   1. **Habitable Zone** (uneasy): concrete warehouse, racks/crates, survivors' camp with radio + can opener + **Pim** (recruitable companion), crowbar-pried door, hound packs.
@@ -58,6 +67,7 @@ All far below the budgets (Ultra < 1500 draws; Potato < 150 draws and < 150k tri
 
 ## Known gaps / honest notes
 - **Deploy:** the `github-pages` environment only deploys from `main`; every phase is pushed to the assigned branch and then to `main`.
+- Phase 3 gaps: no real waves in Level 7 (surge on splashing only); Level 6 beacon is a single tone at the exit; Level 8 crossing is a gated door, not a physical rope swing; Leviathan is a submerged mesh that surfaces when it moves (no scripted glimpses); water has no caustics/SSR yet; Faceling mimics a generic coworker (it does not yet wear Pim's face when Pim is recruited); the Drowned/Leech/Static have simple behaviors.
 - Level-specific hooks not built yet: Level 2 steam hazard (it is fog + sound only), Level 3 arc-flash scare (it reuses the Director flicker burst), Level 4 "elevators that lie", Level 5 room-number plates and a "knock" rule that does anything (it is a deliberately false rule), Level 1 forklifts. These are dressing/polish for the Phase 5 pass.
 - Rules (Level 5) check flashlight/run/noise inside halls only; "after midnight" is not time-gated.
 - Companion v1: follows, panics, can be lost; it does not carry items, give light, or talk yet. Only Pim exists. Faceling mimics of companions are Phase 3.

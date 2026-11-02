@@ -259,7 +259,7 @@ export class Ui {
     this.timeEl.textContent = `${t.getUTCHours().toString().padStart(2, '0')}:${t.getUTCMinutes().toString().padStart(2, '0')}:${t.getUTCSeconds().toString().padStart(2, '0')}  SP`;
     ($('i', this.noise) as HTMLElement).style.width = `${Math.round(Math.min(1, sim.player.noise) * 100)}%`;
     // hotbar / vitals / gear: rebuilt only when something visible changed
-    const key = [inv.hotbar.map((id) => (id ? `${id}${inv.count(id)}` : '-')).join(','), inv.selected, Math.round(st.health / 5), Math.round(st.sanity / 5), Math.round(st.hunger / 5), Math.round(st.thirst / 5), Math.round(sim.flash.battery), Math.round(sim.cam.battery / 5), sim.flash.on, sim.cam.nightVision].join('|');
+    const key = [inv.hotbar.map((id) => (id ? `${id}${inv.count(id)}` : '-')).join(','), inv.selected, Math.round(st.health / 5), Math.round(st.sanity / 5), Math.round(st.hunger / 5), Math.round(st.thirst / 5), Math.round(sim.flash.battery), Math.round(sim.cam.battery / 5), sim.flash.on, sim.cam.nightVision, Math.round(st.breath / 5)].join('|');
     if (key === this.hudKey) return;
     this.hudKey = key;
     this.hotbar.replaceChildren(...inv.hotbar.map((id, i) => {
@@ -268,7 +268,7 @@ export class Ui {
       return b;
     }));
     const bar = (label: string, v: number) => [h('span', {}, label), h('div', { class: 'vb' + (v < 25 ? ' low' : '') }, h('i', { style: `width:${Math.round(v)}%` }))];
-    this.vitals.replaceChildren(...bar('HP', st.health), ...bar('MIND', st.sanity), ...(sim.hungerEnabled && sim.diff.hungerRate > 0 ? [...bar('FOOD', st.hunger), ...bar('WATER', st.thirst)] : []));
+    this.vitals.replaceChildren(...bar('HP', st.health), ...bar('MIND', st.sanity), ...(sim.hungerEnabled && sim.diff.hungerRate > 0 ? [...bar('FOOD', st.hunger), ...bar('WATER', st.thirst)] : []), ...(st.breath < 99 ? bar('AIR', st.breath) : []));
     this.vitals.classList.toggle('calm', st.health > 90 && st.sanity > 85 && st.hunger > 70 && st.thirst > 70);
     this.gear.textContent = `${sim.flash.on && inv.has('flashlight') ? '☼' : '☼̸'} ${Math.round(sim.flash.battery)}%   ${sim.cam.nightVision ? 'NV ON' : 'NV'} ${Math.round(sim.cam.battery)}%`;
   }

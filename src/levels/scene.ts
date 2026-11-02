@@ -4,7 +4,7 @@
  * overlays. One instance per loaded level; `dispose()` frees everything.
  */
 import {
-  AmbientLight, Box3, PointLight, TorusGeometry, BoxGeometry, BufferAttribute, BufferGeometry, Color, CylinderGeometry, FogExp2, Group, InstancedMesh, LineBasicMaterial,
+  AmbientLight, Box3, PointLight, TorusGeometry, PlaneGeometry, BoxGeometry, BufferAttribute, BufferGeometry, Color, CylinderGeometry, FogExp2, Group, InstancedMesh, LineBasicMaterial,
   LineSegments, Matrix4, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, PMREMGenerator, Scene, SpotLight, Vector3, type Material,
 } from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
@@ -50,6 +50,8 @@ export class LevelScene {
   private itemMeshes = new Map<string, Mesh>();
   private doorMeshes = new Map<number, Mesh>();
   private propMeshes: InstancedMesh[] = [];
+  private waterMeshes: Mesh[] = [];
+  private fogBase = { color: new Color(), density: 0 };
   private valveMeshes = new Map<string, Mesh>();
   private wpLeds: MeshBasicMaterial[] = [];
   private extras: { dispose(): void }[] = [];
@@ -94,6 +96,7 @@ export class LevelScene {
     const look = def.look;
     this.scene.background = new Color(look.fogColor);
     this.scene.fog = new FogExp2(look.fogColor, look.fogDensity / Math.max(0.5, st.drawDistance));
+    this.fogBase = { color: new Color(look.fogColor), density: look.fogDensity / Math.max(0.5, st.drawDistance) };
     this.ambientBase = look.ambientIntensity;
     this.ambient = new AmbientLight(look.ambient, look.ambientIntensity);
     this.scene.add(this.ambient);
@@ -176,16 +179,30 @@ export class LevelScene {
     // props (racks, desks, pipes...): box meshes per kind (instanced by kind)
     const propGeo = new BoxGeometry(1, 1, 1);
     this.extras.push(propGeo);
-    const byColor = new Map<number, { x: number; z: number; w: number; d: number; h: number }[]>();
-    for (const pr of plan.props ?? []) (byColor.get(pr.color) ?? byColor.set(pr.color, []).get(pr.color)!).push(pr);
-    for (const [color, list] of byColor) {
-      const mat = new MeshStandardMaterial({ color, roughness: 0.75, metalness: 0.25 });
+    const byColor = new Map<string, { x: number; z: number; w: number; d: number; h: number; color: number; kind: string }[]>();
+    for (const pr of plan.props ?? []) { const k = `${pr.color}:${pr.kind === 'glow'}`; (byColor.get(k) ?? byColor.set(k, []).get(k)!).push(pr); }
+    for (const [, list] of byColor) {
+      const color = list[0].color;
+      const mat = new MeshStandardMaterial({ color, roughness: 0.75, metalness: 0.25, ...(list[0].kind === 'glow' ? { emissive: new Color(color).multiplyScalar(1.4) } : {}) });
       this.extras.push(mat);
       const inst = new InstancedMesh(propGeo, mat, list.length);
       list.forEach((pr, i) => { this.tmpM.makeScale(pr.w, pr.h, pr.d).setPosition(pr.x, pr.h / 2, pr.z); inst.setMatrixAt(i, this.tmpM); });
       inst.castShadow = true; inst.receiveShadow = true;
       scene.add(inst); this.propMeshes.push(inst);
     }
+    // water: a translucent surface per flooded room (wade / swim / flooded heights); sludge is murky brown
+    const waterGeos: PlaneGeometry[] = [];
+    for (const w of plan.water ?? []) {
+      const r = plan.rooms[w.room];
+      const g = new PlaneGeometry(r.w - 0.3, r.d - 0.3); waterGeos.push(g);
+      const m = new MeshStandardMaterial({ color: w.sludge ? 0x3a3a1e : 0x2a6a80, roughness: 0.08, metalness: 0.1, transparent: true, opacity: w.sludge ? 0.85 : 0.6 });
+      this.extras.push(m);
+      const mesh = new Mesh(g, m); mesh.rotation.x = -Math.PI / 2; mesh.position.set(r.x + r.w / 2, w.depth === 'wade' ? 0.3 : w.depth === 'swim' ? 1.0 : Math.min(2.8, r.height - 0.2), r.z + r.d / 2);
+      scene.add(mesh); this.waterMeshes.push(mesh);
+    }
+    this.extras.push({ dispose: () => waterGeos.forEach((g) => g.dispose()) });
+    // sound beacon at the exit (navigate by ear in the dark)
+    if (plan.beacons?.length) { const a = this.svc.audio(), sn = this.svc.sounds(); if (a && sn) this.humHandles.push(sn.beacon(a.spatial(plan.beacons[0].x, 1.4, plan.beacons[0].z, 'ambience', 0.15, 0.6))); }
     // puzzle valves: a wheel on a stem that turns with its state
     for (const pz of plan.puzzles ?? []) for (const pt of pz.parts) {
       if (sim.keys.has(pz.lock)) break;
@@ -202,7 +219,7 @@ export class LevelScene {
     const doorGeo = new BoxGeometry(1, 2.2, 0.16);
     const doorMats: Record<string, MeshStandardMaterial> = {
       key: new MeshStandardMaterial({ color: 0x5a1f1a, roughness: 0.6, metalness: 0.3 }), fuse: new MeshStandardMaterial({ color: 0x1f3a5a, roughness: 0.5, metalness: 0.5, emissive: new Color(0x081428) }),
-      pry: new MeshStandardMaterial({ color: 0x4a4a3a, roughness: 0.8, metalness: 0.4 }), valves: new MeshStandardMaterial({ color: 0x5a3a1a, roughness: 0.5, metalness: 0.6 }),
+      pry: new MeshStandardMaterial({ color: 0x4a4a3a, roughness: 0.8, metalness: 0.4 }), rope: new MeshStandardMaterial({ color: 0x6a5a3a, roughness: 0.95 }), seq: new MeshStandardMaterial({ color: 0x2a3a4a, roughness: 0.4, metalness: 0.7, emissive: new Color(0x061018) }), breaker: new MeshStandardMaterial({ color: 0x3a1a1a, roughness: 0.5, metalness: 0.6, emissive: new Color(0x200808) }), valves: new MeshStandardMaterial({ color: 0x5a3a1a, roughness: 0.5, metalness: 0.6 }),
     };
     this.extras.push(doorGeo, ...Object.values(doorMats));
     for (const d of sim.doors.values()) {
@@ -281,6 +298,7 @@ export class LevelScene {
   }
 
   private floorSurface(): Surface {
+    if (this.sim.waterHere) return 'water';
     const f = this.def.look.floor[0];
     return f === 'carpet' ? 'carpet' : f === 'tile' ? 'tile' : f === 'metal' ? 'metal' : 'concrete';
   }
@@ -298,6 +316,7 @@ export class LevelScene {
 
   private onSimEvent(e: SimEvent): void {
     const s = this.svc.sounds(), a = this.svc.audio();
+    if (e.type === 'lights') this.restoreRooms(e.rooms);
     if (e.type === 'note') { const m = [...this.itemMeshes].find(([id]) => this.plan.items.find((i) => i.id === id)?.item === e.id); if (m) { m[1].removeFromParent(); this.itemMeshes.delete(m[0]); } this.onNote?.(e.id); s?.click('tick'); }
     else if (e.type === 'death') this.onDeath?.();
     else if (e.type === 'custom') this.onCustom?.(e.ref);
@@ -349,6 +368,9 @@ export class LevelScene {
     this.ev.sync(this.sim.ew, this.time, dt);
     this.fx.update(dt, cam, flashOut > 0.4);
     this.hubObj?.update(this.time, p.x, p.z);
+    // underwater: murky blue fog while diving
+    const fog = this.scene.fog as FogExp2 | null;
+    if (fog) { const dive = this.sim.player.swim === 'dive'; fog.density += ((dive ? this.fogBase.density * 5 + 0.05 : this.fogBase.density) - fog.density) * Math.min(1, dt * 6); fog.color.lerp(dive ? this.tmpC.setHex(0x0a2a3a) : this.fogBase.color, Math.min(1, dt * 6)); }
     for (const [id, w] of this.valveMeshes) w.rotation.z = (this.sim.x.valves.get(id) ?? 0) * (Math.PI / 2);
     const nv = this.sim.cam.nightVision;
     gfx.nightVision = nv; this.ambient.intensity = this.ambientBase * (nv ? 4 : 1);
@@ -405,6 +427,16 @@ export class LevelScene {
     this.scene.add(ls); this.overlays.set(name, ls);
   }
 
+  /** Breaker flipped: relight every lamp in these rooms (sections of the Garage). */
+  restoreRooms(rooms: number[]): void {
+    const set = new Set(rooms);
+    for (const v of this.chunks.values()) {
+      let dirty = false;
+      v.lampDefs.forEach((d, i) => { if (set.has(d.room) && d.broken) { d.broken = false; v.lamps?.setColorAt(i, this.tmpC.setScalar(1)); dirty = true; } });
+      if (dirty && v.lamps?.instanceColor) v.lamps.instanceColor.needsUpdate = true;
+    }
+  }
+
   teleport(x: number, z: number): void { this.sim.player.place(x, z, this.sim.player.yaw); }
 
   dispose(): void {
@@ -413,6 +445,7 @@ export class LevelScene {
     for (const h of this.humHandles) h.stop(0.3);
     for (const k of [...this.chunks.keys()]) this.removeChunk(k);
     this.propMeshes.forEach((m) => { m.dispose(); m.removeFromParent(); });
+    this.waterMeshes.forEach((m) => m.removeFromParent());
     this.props?.dispose();
     this.lights.dispose(); this.dust?.dispose(); this.lib.dispose();
     this.extras.forEach((e) => e.dispose());

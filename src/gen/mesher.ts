@@ -186,7 +186,7 @@ export function meshChunk(plan: LevelPlan, cx: number, cz: number, q: MeshQualit
       const roll = rng.next();
       lights.push({
         x: x0 + ((i + 0.5) / nxL) * r.w, y: H - 0.06, z: z0 + ((j + 0.5) / nzL) * r.d, room: r.id,
-        flicker: roll < 0.18, broken: roll > 0.94, color: r.kind === 'supply' ? 0xfff0d0 : 0xfff2c0, intensity: 0.9 + rng.next() * 0.2,
+        flicker: roll < (plan.flicker ?? 0.18), broken: roll > 0.94 || (plan.unlit?.includes(r.id) ?? false), color: r.kind === 'supply' ? 0xfff0d0 : 0xfff2c0, intensity: 0.9 + rng.next() * 0.2,
       });
     }
 

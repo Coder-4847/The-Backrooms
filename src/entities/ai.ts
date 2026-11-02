@@ -38,6 +38,8 @@ export interface PlayerPercept {
   hidden: boolean; crouching: boolean; noise: number; light: number;
   flashOn: boolean; flashPower: number;
   flares: Vec2[];
+  /** Standing in water (Leviathan, Drowned, Leech care). */
+  water?: boolean;
 }
 
 export interface AiContext {
@@ -66,7 +68,7 @@ export class EntityWorld {
   /** Remove an entity at the end of this update (despawn). */
   remove(e: Entity): void { if (this.isHunting(e.state)) this.endHunt(); this.removed.push(e); }
 
-  constructor(private plan: LevelPlan, private world: StaticWorld, seed: number) {
+  constructor(readonly plan: LevelPlan, readonly world: StaticWorld, seed: number) {
     this.nav = new NavGraph(plan);
     this.rng = new Rng(seed ^ 0xe17171);
   }

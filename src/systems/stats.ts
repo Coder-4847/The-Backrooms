@@ -23,6 +23,8 @@ export type Hallucination = 'whisper' | 'footsteps' | 'fakeEntity' | 'uiGlitch';
 export class Stats {
   health = 100; sanity = 100; hunger = 100; thirst = 100;
   fear = 0;
+  /** Breath 0..100: drains while diving, refills at the surface (spec 5.1 hold-breath). */
+  breath = 100;
   dead = false;
   private hallucTimer = 20;
 
@@ -48,6 +50,14 @@ export class Stats {
     }
     // slow natural recovery when well fed and calm
     if (this.hunger > 60 && this.thirst > 60 && c.threat === 0 && this.health < 100) this.health = clamp(this.health + 0.15 * dt);
+  }
+
+  /** Returns true while the player is out of air. */
+  updateBreath(dt: number, diving: boolean, d: DifficultyDef, drain = 3.2): boolean {
+    if (diving) this.breath = Math.max(0, this.breath - drain * Math.min(1.5, d.damageTaken) * dt);
+    else this.breath = Math.min(100, this.breath + 28 * dt);
+    if (diving && this.breath <= 0) { this.damage(9 * dt, d, true); return true; }
+    return false;
   }
 
   damage(n: number, d: DifficultyDef, raw = false): void {

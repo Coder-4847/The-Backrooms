@@ -40,4 +40,15 @@ export const NPCS: Record<string, NpcDef> = {
       crackers: { text: 'Do not tell Marlow. He counts these.', choices: [{ text: 'Back.', next: 'hello' }, bye] },
     },
   },
+  june: {
+    id: 'june', name: 'June Ashdown', role: 'Cartographer', color: 0x6a8a7a, blip: 210, start: 'hello',
+    nodes: {
+      hello: { text: 'You found the Waystation. Good. Most people stop at the Lobby. I map what is left. The levels are not built, you know. They are drawn. Same hand, every time.', choices: [
+        { text: 'Drawn by whom?', next: 'who' }, { text: 'Any tips for the Deep?', next: 'deep' },
+        { text: 'Could you spare a flare?', give: { item: 'flare', n: 1 }, once: 'june_flare', next: 'flare' }, { text: '(leave)' }] },
+      who: { text: 'The Architect. It builds the exits too, one per level, and then it waits at the last one. I think it is lonely. That should make it less frightening. It does not.', choices: [{ text: 'Back.', next: 'hello' }] },
+      deep: { text: 'Level six is dark on purpose: walk toward the tone, crouch when the floor trembles. The flooded places want you to splash; do not. Garage smiles want you to stare; do not. Caves want a light; keep it on them.', choices: [{ text: 'Back.', next: 'hello' }] },
+      flare: { text: 'Hounds scatter from those. The things below do not care.', choices: [{ text: 'Back.', next: 'hello' }, { text: '(leave)' }] },
+    },
+  },
 };

@@ -23,7 +23,7 @@ export class SceneFx {
         const out = this.spatial(e.entity.x, e.entity.z, 'voice', 0.1);
         if (s && out) {
           const id = e.entity.def.id;
-          if (id === 'hound') s.growl(out); else if (id === 'howler') s.scream(out); else if (id === 'concierge') s.bell(out); else if (id === 'monitor') s.whistle(out); else s.stickTell(out);
+          if (id === 'hound' || id === 'crawler') s.growl(out, id === 'crawler' ? 0.8 : 1.2); else if (id === 'howler') s.scream(out); else if (id === 'lurker') s.rumble(out); else if (id === 'leviathan' || id === 'drowned') s.surge(out); else if (id === 'smiler') s.grin(out); else if (id === 'static') s.staticBurst(out, 1.2); else if (id === 'leech') s.splash(out, 0.5); else if (id === 'concierge') s.bell(out); else if (id === 'monitor') s.whistle(out); else s.stickTell(out);
         }
         g.glitch = Math.max(g.glitch, 0.25);
         this.svc.input.rumble(0.2, 0.5, 400);
@@ -49,6 +49,9 @@ export class SceneFx {
       case 'radio': { const o = this.spatial(e.x, e.z, 'sfx', 0.1); if (o && s) { for (let i = 0; i < 4; i++) setTimeout(() => s.staticBurst(o, 1.0), i * 1500); } bus.emit('toast', { text: 'Radio lure on (20 s). Things will come to it.' }); break; }
       case 'valve': { if (s && a) s.valve(a.flat('sfx', 0.3)); if (e.solved) bus.emit('toast', { text: 'Valves aligned. Somewhere, a gate unlocks.' }); break; }
       case 'puzzle': g.glitch = 0.5; break;
+      case 'splash': { const o = this.spatial(e.x, e.z, 'sfx', 0.1); if (o && s) s.splash(o, this.sim.waterHere === 'wade' ? 0.25 : 0.4); break; }
+      case 'seq': bus.emit('toast', { text: e.ok ? `Server up (${e.progress})` : 'Wrong order: the rack resets.', kind: e.ok ? 'info' : 'warn' }); if (!e.ok) g.glitch = 0.6; break;
+      case 'lights': if (s && a) s.creak(a.flat('sfx', 0.3), 0.5); bus.emit('toast', { text: 'Power restored to a section.' }); break;
       case 'violation': { if (s && a) s.bell(a.flat('sfx', 0.4)); bus.emit('toast', { text: `You broke a rule: "${e.rule}"`, kind: 'warn' }); g.glitch = 0.7; break; }
       case 'companion': bus.emit('toast', { text: e.what === 'recruited' ? 'Pim follows you.' : e.what === 'hurt' ? 'Pim is hurt!' : 'Pim is gone.', kind: e.what === 'recruited' ? 'info' : 'warn' }); break;
       case 'flare': bus.emit('toast', { text: 'Flare lit. Something may be drawn to it.' }); break;
@@ -74,6 +77,11 @@ export class SceneFx {
   /** Per rendered frame: ghosts vanish when approached or lit; heartbeat follows fear and sanity. */
   update(dt: number, cam: Camera, flashOn: boolean): void {
     const p = this.sim.player, s = this.svc.sounds(), a = this.svc.audio();
+    for (const e of this.sim.ew.entities) {
+      const gl = e.data.glitch as number | undefined, rb = e.data.rumble as number | undefined;
+      if (gl && gl > 0) this.svc.gfx.glitch = Math.max(this.svc.gfx.glitch, gl * 0.6);
+      if (rb && rb > 0.3 && Math.random() < dt * 4) this.svc.input.rumble(rb * 0.5, rb * 0.2, 120);
+    }
     for (const g of this.ev.ghostList) {
       const d = Math.hypot(g.x - p.x, g.z - p.z);
       const lx = -Math.sin(p.yaw), lz = -Math.cos(p.yaw);

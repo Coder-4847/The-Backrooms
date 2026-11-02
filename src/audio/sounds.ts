@@ -247,4 +247,43 @@ export class Sounds {
 
   /** Valve turning: squeaky metal. */
   valve(out: AudioNode): void { this.creak(out, 0.7); }
+
+  /** Low floor rumble (Lurker's tell): sub-bass swell with noise. */
+  rumble(out: AudioNode, dur = 1.5): void {
+    const c = this.ctx, t = c.currentTime;
+    const o = c.createOscillator(); o.type = 'sine'; o.frequency.setValueAtTime(34, t); o.frequency.linearRampToValueAtTime(46, t + dur);
+    const n = this.a.noiseSource(); const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 160;
+    const g = c.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.6, t + dur * 0.6); g.gain.linearRampToValueAtTime(0, t + dur);
+    o.connect(g); n.connect(lp).connect(g); g.connect(out); o.start(t); o.stop(t + dur + 0.05); n.start(t, 0, dur);
+    this.a.caption('[the floor trembles]', dur * 1000);
+  }
+
+  /** Water surge (Leviathan): swelling filtered noise + a deep bubble. */
+  surge(out: AudioNode, dur = 1.8): void {
+    const c = this.ctx, t = c.currentTime;
+    const n = this.a.noiseSource(); const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.setValueAtTime(200, t); f.frequency.linearRampToValueAtTime(1400, t + dur * 0.7);
+    const g = c.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.55, t + dur * 0.7); g.gain.linearRampToValueAtTime(0, t + dur);
+    n.connect(f).connect(g).connect(out); n.start(t, 0, dur);
+    const o = c.createOscillator(); o.frequency.setValueAtTime(70, t); o.frequency.exponentialRampToValueAtTime(30, t + dur); const og = c.createGain(); og.gain.value = 0.3; o.connect(og).connect(out); o.start(t); o.stop(t + dur);
+    this.a.caption('[the water surges]', dur * 1000);
+  }
+
+  /** Smiler's tell: a thin, too-sweet chord that slides sharp. */
+  grin(out: AudioNode, dur = 1.5): void {
+    const c = this.ctx, t = c.currentTime;
+    for (const f of [880, 1318, 1760]) {
+      const o = c.createOscillator(); o.type = 'triangle'; o.frequency.setValueAtTime(f, t); o.frequency.linearRampToValueAtTime(f * 1.06, t + dur);
+      const g = c.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.08, t + dur * 0.8); g.gain.linearRampToValueAtTime(0, t + dur);
+      o.connect(g).connect(out); o.start(t); o.stop(t + dur + 0.05);
+    }
+    this.a.caption('[a thin, sweet chord]', dur * 1000);
+  }
+
+  /** Underwater muffled splash. */
+  splash(out: AudioNode, level = 0.4): void {
+    const c = this.ctx, t = c.currentTime;
+    const n = this.a.noiseSource(); const f = c.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 700; f.Q.value = 0.7;
+    const g = c.createGain(); g.gain.setValueAtTime(level, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+    n.connect(f).connect(g).connect(out); n.start(t, Math.random(), 0.4);
+  }
 }

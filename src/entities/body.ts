@@ -4,7 +4,7 @@
  * a few hundred triangles on Potato, many thousands on Ultra. Distinct silhouettes in the dark:
  * the Stick is impossibly tall and thin; the Hound is low with two ember eyes.
  */
-import { BoxGeometry, CatmullRomCurve3, Color, CylinderGeometry, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, SphereGeometry, TubeGeometry, Vector3, type BufferGeometry, type Material } from 'three';
+import { BoxGeometry, CatmullRomCurve3, Color, ConeGeometry, CylinderGeometry, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, SphereGeometry, TubeGeometry, Vector3, type BufferGeometry, type Material } from 'three';
 
 export interface Body { group: Group; update(speed: number, t: number, dt: number, tell: boolean, seen: boolean): void; dispose(): void }
 
@@ -156,6 +156,61 @@ export function buildHowler(level: number): Body {
   };
 }
 
+export function buildLeviathan(level: number): Body {
+  const geos: BufferGeometry[] = []; const mats: Material[] = [];
+  const skin = new MeshStandardMaterial({ color: 0x14181c, roughness: 0.5, metalness: 0.2 }); mats.push(skin);
+  const group = new Group(); const inner = new Group(); group.add(inner);
+  const add = (g: BufferGeometry, m: Material, parent: Group = inner): Mesh => { geos.push(g); const mesh = new Mesh(g, m); parent.add(mesh); return mesh; };
+  const body = add(ellipsoid(1.1, 0.9, 3.2, level), skin); body.position.y = 0.4;
+  for (let i = 0; i < 5; i++) { const fin = add(new ConeGeometry(0.22 - i * 0.025, 0.9 - i * 0.1, 6), skin); fin.position.set(0, 1.2, -1.8 + i * 0.9); fin.rotation.x = -0.3; }
+  const head = add(ellipsoid(0.8, 0.6, 1.0, level), skin); head.position.set(0, 0.5, -3.3);
+  const eyeM = new MeshBasicMaterial({ color: new Color(0xc8e8ff).multiplyScalar(1.5) }); mats.push(eyeM);
+  for (const sx of [-1, 1]) { const eye = add(ellipsoid(0.07, 0.07, 0.07, Math.min(level, 2)), eyeM); eye.position.set(sx * 0.5, 0.7, -4.0); }
+  return {
+    group,
+    update(speed, t, _dt, tell) {
+      inner.position.y = -1.1 + Math.sin(t * 0.8) * 0.15 + (speed > 1 || tell ? 0.6 : 0); // mostly submerged, surfacing when it moves
+      inner.rotation.z = Math.sin(t * 1.1) * 0.05; body.scale.z = 1 + Math.sin(t * 2.2) * 0.02;
+    },
+    dispose() { geos.forEach((g) => g.dispose()); mats.forEach((m) => m.dispose()); },
+  };
+}
+
+export function buildSmiler(level: number): Body {
+  const geos: BufferGeometry[] = []; const mats: Material[] = [];
+  const glow = new MeshBasicMaterial({ color: new Color(0xf4f0d0).multiplyScalar(3) }); mats.push(glow);
+  const dark = new MeshStandardMaterial({ color: 0x050505, roughness: 1, transparent: true, opacity: 0.55 }); mats.push(dark);
+  const group = new Group();
+  const add = (g: BufferGeometry, m: Material): Mesh => { geos.push(g); const mesh = new Mesh(g, m); group.add(mesh); return mesh; };
+  const body = add(ellipsoid(0.3, 0.8, 0.2, level), dark); body.position.y = 1.0;
+  const teeth: Mesh[] = [];
+  for (let i = 0; i < 15; i++) { const a = -0.9 + (i / 14) * 1.8; const m = add(new BoxGeometry(0.05, 0.08, 0.03), glow); m.position.set(Math.sin(a) * 0.26, 1.62 - Math.cos(a) * 0.1 + 0.08, -0.2); teeth.push(m); }
+  for (const sx of [-1, 1]) { const e = add(ellipsoid(0.04, 0.025, 0.02, Math.min(level, 2)), glow); e.position.set(sx * 0.1, 1.78, -0.2); }
+  return {
+    group,
+    update(_speed, t, _dt, tell) {
+      group.position.y = Math.sin(t * 1.3) * 0.04;
+      teeth.forEach((m, i) => { m.scale.y = tell ? 2.2 + Math.sin(t * 30 + i) * 0.4 : 1; });
+      body.scale.x = 1 + (tell ? 0.3 : 0);
+    },
+    dispose() { geos.forEach((g) => g.dispose()); mats.forEach((m) => m.dispose()); },
+  };
+}
+
+export function buildLeech(level: number): Body {
+  const g = new TubeGeometry(new CatmullRomCurve3([new Vector3(0, 0.15, -0.5), new Vector3(0.1, 0.25, -0.2), new Vector3(-0.1, 0.2, 0.1), new Vector3(0, 0.12, 0.5)]), tubular(level) + 4, 0.17, radial(level) + 2, false);
+  const m = new MeshStandardMaterial({ color: 0x2c2418, roughness: 0.4, metalness: 0.2 });
+  const mesh = new Mesh(g, m); const group = new Group(); group.add(mesh);
+  return { group, update(speed, t) { mesh.scale.z = 1 + Math.sin(t * 6) * 0.12 * (0.3 + Math.min(1, speed)); mesh.rotation.y = Math.sin(t * 3) * 0.2; }, dispose() { g.dispose(); m.dispose(); } };
+}
+
+/** Wrap a body: tint every standard material and scale it (cheap variants like pale Drowned or small crawlers). */
+function variant(b: Body, scale: number, color?: number, emissive?: number): Body {
+  b.group.scale.setScalar(scale);
+  b.group.traverse((o) => { const m = (o as Mesh).material as MeshStandardMaterial | undefined; if (m && 'color' in m && (m as MeshStandardMaterial).roughness !== undefined) { if (color !== undefined) m.color.setHex(color); if (emissive !== undefined) m.emissive.setHex(emissive); } });
+  return b;
+}
+
 export function buildBody(defId: string, level: number): Body {
   switch (defId) {
     case 'hound': return buildHound(level);
@@ -165,6 +220,14 @@ export function buildBody(defId: string, level: number): Body {
     case 'concierge': return buildHumanoid(level, { height: 2.1, suit: 0x141214, hat: true, skin: 0xa89c90 });
     case 'monitor': return buildHumanoid(level, { height: 1.9, suit: 0x2a4a3a, sash: 0xd8c040, blink: true, wide: true });
     case 'companion': return buildHumanoid(level, { height: 1.65, suit: 0xa8602a, blink: true, lantern: true });
+    case 'lurker': return variant(buildHowler(level), 1.12, 0x0e0e12);
+    case 'leviathan': return buildLeviathan(level);
+    case 'crawler': return variant(buildHound(level), 0.55, 0x1c2a22);
+    case 'smiler': return buildSmiler(level);
+    case 'drowned': return variant(buildHumanoid(level, { height: 1.8, suit: 0x4a5a60, skin: 0x8ea0a4, blink: false }), 1, undefined, 0x0a1418);
+    case 'leech': return buildLeech(level);
+    case 'static': { const b = variant(buildStick(level), 0.7, 0x0a2a30, 0x0a5a66); const g = b.group; const up = b.update; b.update = (sp, t, dt, tell, seen) => { up(sp, t, dt, tell, seen); g.position.x += (Math.random() - 0.5) * 0.04; g.scale.y = 0.7 * (1 + (Math.random() < 0.08 ? 0.3 : 0)); }; return b; }
+    case 'faceling': return buildHumanoid(level, { height: 1.7, suit: 0xa8602a, blink: false, lantern: true });
     default: return buildStick(level);
   }
 }

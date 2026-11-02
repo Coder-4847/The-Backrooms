@@ -27,6 +27,12 @@ export interface LevelSpec {
   guaranteed?: Guaranteed[];
   /** Rooms longer than this aspect ratio count as corridors/halls (rules, patrols). Default 2.2. */
   hallAspect?: number;
+  /** Water: fractions of eligible rooms that are wade / swim (flooded only for off-path side rooms). */
+  water?: { wade: number; swim: number; flooded: number; sludge?: boolean };
+  /** Fully dark level (Lights Out) or light sections restored by breakers (Garage). */
+  lights?: 'dark' | 'sections';
+  flicker?: number;
+  beacons?: boolean;
 }
 
 const cen = (r: Room): Vec2 => ({ x: r.x + r.w / 2, z: r.z + r.d / 2 });
@@ -140,6 +146,35 @@ export function assignEcology(plan: LevelPlan, eco: Ecology[]): void {
   plan.entitySlots = plan.entitySlots.filter((s) => s.entity);
 }
 
+/** Water rooms: never in the start, supply, exit or waypoint rooms; flooded rooms are off-path dead ends only. */
+export function addWater(plan: LevelPlan, rng: Rng, o: NonNullable<LevelSpec['water']>): void {
+  const wp = new Set(plan.waypoints.map((w) => w.room));
+  const onPath = new Set(plan.criticalPath);
+  const out: NonNullable<LevelPlan['water']> = [];
+  for (const r of rng.shuffle([...plan.rooms])) {
+    if (r.kind === 'start' || r.kind === 'supply' || r.kind === 'exit' || wp.has(r.id)) continue;
+    const roll = rng.next();
+    if (!onPath.has(r.id) && r.kind === 'dead' && roll < o.flooded) out.push({ room: r.id, depth: 'flooded', sludge: o.sludge });
+    else if (roll < o.flooded + o.swim) out.push({ room: r.id, depth: 'swim', sludge: o.sludge });
+    else if (roll < o.flooded + o.swim + o.wade) out.push({ room: r.id, depth: 'wade', sludge: o.sludge });
+  }
+  plan.water = out;
+}
+
+/** Lights: 'dark' = everything but the start/supply rooms is unlit and beacons guide by sound; 'sections' = breakers restore path segments. */
+export function addLights(plan: LevelPlan, mode: 'dark' | 'sections'): void {
+  const keep = new Set(plan.rooms.filter((r) => r.kind === 'start' || r.kind === 'supply').map((r) => r.id));
+  if (mode === 'dark') { plan.dark = true; plan.unlit = plan.rooms.filter((r) => !keep.has(r.id)).map((r) => r.id); return; }
+  // sections: assign every room to its nearest critical-path index; segment k lies between lock k and lock k+1
+  const locks = plan.connections.filter((c) => c.lock && plan.puzzles?.some((p) => p.lock === c.lock && p.kind === 'breaker'))
+    .map((c) => ({ lock: c.lock!, pos: Math.max(plan.criticalPath.indexOf(c.a), plan.criticalPath.indexOf(c.b)) })).sort((a, b) => a.pos - b.pos);
+  const cx = (id: number) => plan.rooms[id].x + plan.rooms[id].w / 2, cz = (id: number) => plan.rooms[id].z + plan.rooms[id].d / 2;
+  const nearest = (r: number) => { let best = 0, bd = Infinity; plan.criticalPath.forEach((pid, i) => { const d = Math.hypot(cx(pid) - cx(r), cz(pid) - cz(r)); if (d < bd) { bd = d; best = i; } }); return best; };
+  const seg = (r: number) => locks.filter((l) => nearest(r) >= l.pos).length; // 0 = before the first breaker gate
+  plan.sections = locks.map((l, i) => ({ lock: l.lock, rooms: plan.rooms.filter((r) => seg(r.id) === i + 1 && !keep.has(r.id)).map((r) => r.id) }));
+  plan.unlit = plan.rooms.filter((r) => seg(r.id) > 0 && !keep.has(r.id)).map((r) => r.id);
+}
+
 export function makeLevel(spec: LevelSpec): LevelDef {
   return {
     id: spec.id, name: spec.name, act: spec.act, tier: spec.tier, door: spec.door, targetSeconds: spec.targetSeconds, intensity: spec.intensity, look: spec.look,
@@ -151,6 +186,10 @@ export function makeLevel(spec: LevelSpec): LevelDef {
       if (spec.notes) addNotes(plan, rng, spec.notes);
       if (spec.guaranteed) addGuaranteed(plan, rng, spec.guaranteed);
       if (spec.ecology) assignEcology(plan, spec.ecology); else plan.entitySlots = plan.entitySlots.filter((s) => s.entity);
+      if (spec.flicker !== undefined) plan.flicker = spec.flicker;
+      if (spec.water) addWater(plan, rng, spec.water);
+      if (spec.lights) addLights(plan, spec.lights);
+      if (spec.beacons) plan.beacons = [plan.exit.pos, ...plan.waypoints.map((w) => w.pos)];
       spec.extra?.(plan, rng); // before props/hides so they steer clear of anything extra placed
       if (spec.props) addProps(plan, rng, spec.props);
       if (spec.hides) addHides(plan, rng, spec.hides);

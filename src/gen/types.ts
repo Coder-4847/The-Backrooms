@@ -45,10 +45,11 @@ export interface HubData {
 
 /** A multi-part puzzle that opens `lock` when solved (spec 5.5: valves, fuses, rules). Parts must be reachable before the lock. */
 export interface PuzzleDef {
-  id: string; kind: 'valves'; lock: string;
+  id: string; kind: 'valves' | 'sequence' | 'breaker'; lock: string;
   parts: { id: string; room: number; pos: Vec2; states: number }[];
-  /** Target state per part (same order as `parts`). */
+  /** valves: target state per part. sequence: part indices in the order they must be pressed. breaker: []. */
   solution: number[];
+  /** Note id that states the solution ('' when none, e.g. breakers). */
   hintNote: string;
 }
 /** Static prop box (racks, desks, pipes...) placed along walls; has a collider. */
@@ -82,6 +83,18 @@ export interface LevelPlan {
   /** Sound travels with less damping in pipe tunnels etc. */
   acoustics?: { damping: number };
   rules?: RuleDef[];
+  /** Water: per-room depth. wade = slow + splashy; swim = surface swimming (Crouch dives, breath drains); flooded = must dive. */
+  water?: { room: number; depth: 'wade' | 'swim' | 'flooded'; sludge?: boolean }[];
+  /** Rooms whose ceiling lights start off (dark levels, unrestored garage sections). Breakers restore them. */
+  unlit?: number[];
+  /** Light sections restored by breaker puzzles: lock id -> rooms. */
+  sections?: { lock: string; rooms: number[] }[];
+  /** Sound beacons for navigating by ear (Lights Out): world positions that emit a tone. */
+  beacons?: Vec2[];
+  /** Fraction of ceiling lights that flicker (default 0.18); Hospital uses a lot. */
+  flicker?: number;
+  /** Fully dark level: base light is near zero (flashlight and sound only). */
+  dark?: boolean;
   /** Offices: the badge question real coworkers answer correctly. */
   verify?: { question: string; answer: string; wrong: string };
   /** Central Hub data (doors, stations, NPC spots); only present on the hub plan. */

@@ -13,6 +13,7 @@ const THROWABLE: [string, number][] = [['distraction', 1.3], ['bottle', 0.95], [
 
 export class SimExtras {
   valves = new Map<string, number>();
+  seq = new Map<string, number>();
   triplines: { x: number; z: number }[] = [];
   radio: { x: number; z: number; t: number; tick: number } | null = null;
   radioCooldown = 0;
@@ -81,7 +82,10 @@ export class SimExtras {
     const s = this.sim, out: Interactable[] = [];
     for (const pz of s.plan.puzzles ?? []) {
       if (s.keys.has(pz.lock)) continue;
-      pz.parts.forEach((pt, i) => out.push({ kind: 'custom', x: pt.pos.x, z: pt.pos.z, label: `Turn valve ${'ABC'[i]} (${this.valves.get(pt.id)})`, ref: { type: 'valve', puzzle: pz.id, part: pt.id } }));
+      pz.parts.forEach((pt, i) => {
+        const label = pz.kind === 'valves' ? `Turn valve ${'ABC'[i]} (${this.valves.get(pt.id)})` : pz.kind === 'sequence' ? `Reboot server ${'ABCD'[i]}` : 'Flip the breaker';
+        out.push({ kind: 'custom', x: pt.pos.x, z: pt.pos.z, label, ref: { type: pz.kind === 'valves' ? 'valve' : pz.kind === 'sequence' ? 'seq' : 'breaker', puzzle: pz.id, part: pt.id } });
+      });
     }
     for (const e of s.ew.entities) {
       if (e.def.behavior === 'coworker' || (e.def.behavior === 'skinstealer' && e.data.disguised !== false && e.state !== 'chase' && e.state !== 'tell')) out.push({ kind: 'custom', x: e.x, z: e.z, label: 'Talk to coworker', ref: { type: 'talk', id: e.id } });
@@ -101,6 +105,25 @@ export class SimExtras {
       s.noise.emit(s.room, s.player.x, s.player.z, 0.5);
       s.emit({ type: 'valve', puzzle: pz.id, solved });
       if (solved) { s.keys.add(pz.lock); s.emit({ type: 'puzzle', id: pz.id }); }
+      return true;
+    }
+    if (ref.type === 'seq' || ref.type === 'breaker') {
+      const pz = s.plan.puzzles!.find((q) => q.id === ref.puzzle)!;
+      s.noise.emit(s.room, s.player.x, s.player.z, 0.45);
+      if (ref.type === 'breaker') {
+        s.keys.add(pz.lock);
+        const rooms = s.plan.sections?.find((q) => q.lock === pz.lock)?.rooms ?? [];
+        for (const r of rooms) s.unlit.delete(r);
+        s.emit({ type: 'lights', lock: pz.lock, rooms }); s.emit({ type: 'puzzle', id: pz.id });
+        return true;
+      }
+      const idx = pz.parts.findIndex((q) => q.id === ref.part);
+      const prog = this.seq.get(pz.id) ?? 0;
+      if (pz.solution[prog] === idx) {
+        this.seq.set(pz.id, prog + 1);
+        s.emit({ type: 'seq', puzzle: pz.id, ok: true, progress: prog + 1 });
+        if (prog + 1 >= pz.solution.length) { s.keys.add(pz.lock); s.emit({ type: 'puzzle', id: pz.id }); }
+      } else { this.seq.set(pz.id, 0); s.emit({ type: 'seq', puzzle: pz.id, ok: false, progress: 0 }); }
       return true;
     }
     if (ref.type === 'recruit') {
