@@ -4,7 +4,7 @@
  * Potato skips the chain entirely (direct render + a cheap DOM grain overlay).
  */
 import {
-  ACESFilmicToneMapping, HalfFloatType, NoToneMapping, PCFSoftShadowMap, PerspectiveCamera, Scene, SRGBColorSpace,
+  AgXToneMapping, HalfFloatType, PCFSoftShadowMap, PerspectiveCamera, Scene, SRGBColorSpace,
   Vector2, WebGLRenderer, WebGLRenderTarget,
 } from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
@@ -12,7 +12,9 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
 import { VhsPass } from './vhs';
+import { ExposurePass } from './exposure';
 import { renderScale, TIERS, type HardwareInfo, type TierDef } from './quality';
 import type { Settings } from '../core/settings';
 import type { LevelLook } from '../gen/types';
@@ -34,6 +36,7 @@ export class Gfx {
   private renderPass: RenderPass | null = null;
   private gtao: GTAOPass | null = null;
   private bloom: UnrealBloomPass | null = null;
+  private exposure: ExposurePass | null = null;
   private vhs: VhsPass | null = null;
   private grainEl: HTMLElement;
   private size = new Vector2();
@@ -84,10 +87,12 @@ export class Gfx {
 
     this.disposePost();
     if (tier.post === 'none') {
-      r.toneMapping = ACESFilmicToneMapping;
-      r.toneMappingExposure = 1.0;
+      r.toneMapping = AgXToneMapping;
+      r.toneMappingExposure = 1.05; // no eye adaptation on Potato: a fixed exposure
     } else {
-      r.toneMapping = NoToneMapping; // tone mapping happens in OutputPass
+      // OutputPass reads renderer.toneMapping (scene passes render to HDR targets, untonemapped)
+      r.toneMapping = AgXToneMapping;
+      r.toneMappingExposure = 1.0;
       this.buildComposer(tier, s);
     }
     this.resize();
@@ -109,20 +114,26 @@ export class Gfx {
       this.gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: tier.level >= 4 ? 16 : 8 });
       c.addPass(this.gtao);
     }
+    this.exposure = new ExposurePass();
+    c.addPass(this.exposure);
     if (tier.bloom && s.bloom) {
-      this.bloom = new UnrealBloomPass(new Vector2(w, h), 0.32, 0.5, 1.05);
+      this.bloom = new UnrealBloomPass(new Vector2(w, h), tier.level >= 3 ? 0.24 : 0.2, 0.3, 1.6);
       c.addPass(this.bloom);
     }
     c.addPass(new OutputPass());
+    // no MSAA below High: post-process anti-aliasing keeps thin geometry (ceiling grid, trims) from crawling
+    if (s.antialias && samples === 0) c.addPass(new SMAAPass());
     this.vhs = new VhsPass();
     c.addPass(this.vhs);
+    if (this.lookGrade) this.applyGrade(this.lookGrade);
   }
 
   private disposePost(): void {
     this.composer?.dispose();
     this.gtao?.dispose();
     this.bloom?.dispose();
-    this.composer = this.renderPass = this.gtao = this.bloom = this.vhs = null;
+    this.exposure?.dispose();
+    this.composer = this.renderPass = this.gtao = this.bloom = this.vhs = this.exposure = null;
   }
 
   /** Use the scene's look (fog, tint) for post uniforms. */
@@ -147,6 +158,9 @@ export class Gfx {
     u.uContrast.value = look.grade.contrast;
     this.applyGrade(look.grade);
   }
+
+  /** Snap eye adaptation (new level, teleport). */
+  resetExposure(): void { this.exposure?.reset(); }
 
   setScene(scene: Scene): void {
     this.scene = scene;
@@ -195,6 +209,7 @@ export class Gfx {
       u.uNv.value = this.nightVision ? 1 : 0;
     }
     this.glitch *= Math.pow(0.02, dt); // decays in ~1s
+    if (this.exposure) this.exposure.dt = Math.min(0.1, dt);
     this.renderer.info.reset();
     if (this.composer) this.composer.render(dt);
     else this.renderer.render(this.scene, this.camera);

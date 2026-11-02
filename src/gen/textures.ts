@@ -9,7 +9,7 @@
  */
 import { Rng } from './rng';
 
-export type TexKind = 'wallpaper' | 'carpet' | 'concrete' | 'tile' | 'metal' | 'ceiling' | 'stain' | 'louver';
+export type TexKind = 'wallpaper' | 'carpet' | 'concrete' | 'tile' | 'metal' | 'ceiling' | 'stain' | 'louver' | 'macro';
 export interface TexSet { size: number; albedo: Uint8ClampedArray; normal: Uint8ClampedArray; orm: Uint8ClampedArray }
 
 const LATTICE = 256;
@@ -71,8 +71,9 @@ type Recipe = (u: number, v: number, x: Ctx, variant: number, o: Px) => void;
 function stainAt(x: Ctx, u: number, v: number, period: number, threshold: number): [number, number] {
   const wu = u + (x.n.fbm(u, v, period, 3) - 0.5) * 0.25, wv = v + (x.n.fbm(u + 0.37, v + 0.71, period, 3) - 0.5) * 0.25;
   const s = x.n2.fbm(wu, wv, period, 5);
-  const inside = smooth(threshold, threshold + 0.05, s);
-  const tide = smooth(0.022, 0, Math.abs(s - threshold - 0.012)) * (0.6 + 0.4 * x.n.at(u, v, 64));
+  // interior fades in from the tide line (water wicks outward and dries leaving a ring)
+  const inside = smooth(threshold, threshold + 0.03, s) * (0.45 + 0.55 * smooth(threshold + 0.1, threshold + 0.01, s));
+  const tide = smooth(0.016, 0, Math.abs(s - threshold - 0.008)) * (0.5 + 0.5 * x.n.at(u, v, 64));
   return [inside, tide];
 }
 
@@ -91,15 +92,15 @@ const RECIPES: Record<TexKind, Recipe> = {
     const motif = smooth(0.06, 0.02, Math.abs(Math.abs(mu - 0.5) * 1.2 + Math.abs(mv - 0.5) - 0.22));
     const fibre = x.n2.at(u, v, 256) * 0.5 + x.n2.at(u * 0.25, v, 256) * 0.5; // slightly vertical paper grain
     const blotch = x.n.fbm(u, v, 4, 4);
-    const [stain, tide] = stainAt(x, u, v, 4, 0.58);
+    const [stain, tide] = stainAt(x, u, v, 8, 0.71);
     // occasional peel at a seam: the paper lifts and shows the pale backing
-    const peelOn = hash1(strip * 31 + variant) > 0.62;
+    const peelOn = hash1(strip * 31 + variant) > 0.8;
     const peel = peelOn ? smooth(0.06, 0.0, fu) * smooth(0.55, 0.62, x.n.fbm(u * 0.5, v, 8, 3)) : 0;
-    let k = 0.86 + (fibre - 0.5) * 0.06 + (blotch - 0.5) * 0.12 - pin * 0.05 - motif * 0.06 - seam * 0.22;
+    let k = 0.86 + (fibre - 0.5) * 0.06 + (blotch - 0.5) * 0.12 - pin * 0.07 - motif * 0.1 - seam * 0.12;
     k *= 1 - stain * 0.16 - tide * 0.32;
     const yel = stain * 0.08 + tide * 0.12; // stains yellow-brown the paper
     o.r = base[0] * k * (1 + yel * 0.2); o.g = base[1] * k * (1 - yel * 0.15); o.b = base[2] * k * (1 - yel * 0.8);
-    if (peel > 0) { o.r = mix(o.r, 0.86, peel); o.g = mix(o.g, 0.83, peel); o.b = mix(o.b, 0.74, peel); }
+    if (peel > 0) { const pk = peel * 0.55; o.r = mix(o.r, base[0] * 1.08, pk); o.g = mix(o.g, base[1] * 1.06, pk); o.b = mix(o.b, base[2] * 1.12, pk); }
     o.h = 0.5 + fibre * 0.05 + motif * 0.02 + pin * 0.01 - seam * 0.12 + peel * 0.25 + tide * 0.02;
     o.rough = 0.82 + fibre * 0.08 - motif * 0.05 - stain * 0.06; o.metal = 0; o.ao = 1;
   },
@@ -109,15 +110,15 @@ const RECIPES: Record<TexKind, Recipe> = {
     const tuft = 1 - smooth(0.0, 0.75, x.c.f1);            // loop tops
     const fibre = x.n2.at(u, v, 256);
     const nap = x.n.fbm(u, v, 8, 3);                         // light/dark nap direction patches
-    const [damp, tide] = stainAt(x, u + 0.13, v + 0.29, 4, 0.52);
+    const [damp, tide] = stainAt(x, u + 0.13, v + 0.29, 8, 0.7);
     const wear = smooth(0.55, 0.8, x.n2.fbm(u * 0.5 + 0.2, v, 4, 3)) * 0.5;
     const base = variant === 1 ? [0.33, 0.37, 0.31] : [0.60, 0.52, 0.24];
-    let k = 0.62 + tuft * 0.32 + (fibre - 0.5) * 0.25 + (nap - 0.5) * 0.16 + (x.c.id - 0.5) * 0.08;
-    k *= 1 - damp * 0.38 - tide * 0.35 - wear * 0.12;
+    let k = 0.7 + tuft * 0.2 + (fibre - 0.5) * 0.1 + (nap - 0.5) * 0.14 + (x.c.id - 0.5) * 0.05;
+    k *= 1 - damp * 0.3 - tide * 0.25 - wear * 0.12;
     o.r = base[0] * k; o.g = base[1] * k; o.b = base[2] * k * (1 - damp * 0.15);
     o.h = tuft * 0.7 + fibre * 0.3 - damp * 0.1;
     o.rough = mix(0.97 - tuft * 0.05, 0.42, damp); // wet carpet glints under light
-    o.metal = 0; o.ao = 0.72 + tuft * 0.28;
+    o.metal = 0; o.ao = 0.85 + tuft * 0.15;
   },
   /** Poured concrete: mottling, Worley aggregate, pores, warped cracks, efflorescence stains, form-tie holes. */
   concrete(u, v, x, variant, o) {
@@ -128,7 +129,7 @@ const RECIPES: Record<TexKind, Recipe> = {
     const pore = smooth(0.14, 0.05, x.c2.f1) * (x.c2.id > 0.72 ? 1 : 0);
     const wu = u + (x.n.at(u, v, 8) - 0.5) * 0.08;
     const crack = smooth(0.965, 0.995, x.n2.ridged(wu, v, 8, 4)) * smooth(0.45, 0.65, x.n.at(u, v, 4));
-    const [stain, tide] = stainAt(x, u, v, 4, 0.6);
+    const [stain, tide] = stainAt(x, u, v, 8, 0.71);
     const ef = smooth(0.62, 0.8, x.n2.fbm(u, v * 0.5, 8, 4)) * 0.4;     // pale efflorescence streaks
     const tu = (u * 3) % 1, tv = (v * 3) % 1;
     const tie = variant === 0 ? smooth(0.045, 0.03, Math.hypot(tu - 0.5, tv - 0.5)) : 0;
@@ -177,11 +178,11 @@ const RECIPES: Record<TexKind, Recipe> = {
       scratch = Math.max(scratch, smooth(0.035, 0.0, Math.hypot(qx - t * dx, qy - t * dy)));
     }
     const wu = u + (x.n.at(u, v, 8) - 0.5) * 0.1;
-    const rust = smooth(0.5, 0.7, x.n.fbm(wu, v, 8, 5));
+    const rust = smooth(0.6, 0.74, x.n.fbm(wu, v, 8, 5));
     x.n.cell(u, v, 96, x.c);
     const pit = rust * smooth(0.18, 0.05, x.c.f1);
     const streak = smooth(0.6, 0.85, x.n2.fbm(u * 2, v * 0.25, 8, 3)) * 0.4;
-    const steel = 0.52 + grain * 0.18 + scratch * 0.18;
+    const steel = 0.52 + grain * 0.18 + scratch * 0.07;
     const rustK = 0.5 + x.n2.at(u, v, 128) * 0.5;
     o.r = mix(steel * 0.95, 0.42 * rustK, rust); o.g = mix(steel * 0.96, 0.22 * rustK, rust); o.b = mix(steel, 0.10 * rustK, rust);
     o.r = mix(o.r, 0.34, streak * (1 - rust)); o.g = mix(o.g, 0.22, streak * (1 - rust)); o.b = mix(o.b, 0.14, streak * (1 - rust));
@@ -199,7 +200,7 @@ const RECIPES: Record<TexKind, Recipe> = {
     const pin = smooth(0.13, 0.05, x.c.f1) * (x.c.id > 0.45 ? 1 : 0);
     const sag = Math.sin(gu * Math.PI) * Math.sin(gv * Math.PI);
     const stained = id > 0.7;
-    const [stain, tide] = stained ? stainAt(x, u, v, 4, 0.55) : [0, 0];
+    const [stain, tide] = stained ? stainAt(x, u, v, 8, 0.6) : [0, 0];
     let k = 0.88 + (id - 0.5) * 0.05 - fissure * 0.14 - pin * 0.22 - rim * 0.18 + (x.n2.at(u, v, 256) - 0.5) * 0.04;
     k *= 1 - stain * 0.12 - tide * 0.35;
     o.r = k * (1 + tide * 0.05); o.g = k * (0.985 - tide * 0.06); o.b = k * (0.94 - stain * 0.08 - tide * 0.2);
@@ -215,17 +216,27 @@ const RECIPES: Record<TexKind, Recipe> = {
     o.r = 0.2; o.g = 0.14; o.b = 0.07; o.a = clamp01(inside * 0.35 + tide * 0.6) * (0.7 + x.n2.at(u, v, 64) * 0.3);
     o.h = 0.5; o.rough = 0.45; o.metal = 0; o.ao = 1;
   },
+  /**
+   * Macro variation (data, not colour): R = broad grime, G = large water stains with tide lines,
+   * B = wet/glossy patches. Sampled at world scale in the shader so tiled surfaces never repeat visibly.
+   */
+  macro(u, v, x, _variant, o) {
+    const grime = x.n.fbm(u, v, 2, 7);
+    const [stain, tide] = stainAt(x, u, v, 4, 0.6);
+    const wet = smooth(0.56, 0.7, x.n2.fbm(u + 0.31, v + 0.17, 4, 5));
+    o.r = grime; o.g = clamp01(stain * 0.55 + tide); o.b = wet; o.h = 0.5; o.rough = 1; o.metal = 0; o.ao = 1;
+  },
   /** Prismatic light-panel diffuser (used as the lamp's emissive map): fine pyramid grid inside a dark frame. */
   louver(u, v, x, _variant, o) {
     const fu = (u * 24) % 1, fv = (v * 24) % 1;
     const prism = 1 - Math.max(Math.abs(fu - 0.5), Math.abs(fv - 0.5)) * 0.5;
     const frame = smooth(0.05, 0.08, Math.min(u, 1 - u, v, 1 - v));
-    const k = (0.8 + prism * 0.2 + (x.n.at(u, v, 16) - 0.5) * 0.05) * frame;
+    const k = (0.8 + prism * 0.2 + (x.n.at(u, v, 16) - 0.5) * 0.05) * (0.45 + 0.55 * frame);
     o.r = k; o.g = k * 0.99; o.b = k * 0.96; o.h = prism; o.rough = 0.3; o.metal = 0; o.ao = 1;
   },
 };
 
-const NORMAL_STRENGTH: Record<TexKind, number> = { wallpaper: 3.5, carpet: 5, concrete: 5, tile: 6, metal: 3, ceiling: 4.5, stain: 1, louver: 1 };
+const NORMAL_STRENGTH: Record<TexKind, number> = { wallpaper: 3.5, carpet: 5, concrete: 5, tile: 6, metal: 3, ceiling: 4.5, stain: 1, louver: 1, macro: 0 };
 
 /** Generate a full PBR set. `size` must be a power of two (32..2048). Deterministic in (kind, seed, variant). */
 export function synthTexture(kind: TexKind, seed: number, size: number, variant = 0): TexSet {

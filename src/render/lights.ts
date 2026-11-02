@@ -22,6 +22,8 @@ export class LightPool {
   private color = new Color();
   all: LightDef[] = [];
   reduceFlicker = false;
+  /** Horizontal radius around the viewer inside which every lamp is a real-time light (baked light fades in beyond). */
+  coverRadius = 0;
   /** Seconds of Director-triggered flicker burst remaining. */
   burstT = 0;
   burst(seconds: number): void { if (!this.reduceFlicker) this.burstT = seconds; }
@@ -63,6 +65,8 @@ export class LightPool {
       if (!best) break;
       used.add(best); picked.push(best);
     }
+    if (picked.length < n) this.coverRadius = 1e4;
+    else { const f = picked[picked.length - 1]; this.coverRadius = Math.hypot(f.x - x, f.z - z); }
     // keep slots that already show a picked def; assign the rest to fading slots
     const have = new Set<LightDef>();
     for (const s of this.slots) if (s.def && used.has(s.def)) have.add(s.def);

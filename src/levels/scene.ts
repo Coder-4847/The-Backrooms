@@ -5,7 +5,7 @@
  */
 import {
   AmbientLight, Box3, PointLight, TorusGeometry, PlaneGeometry, CanvasTexture, SRGBColorSpace, BoxGeometry, BufferAttribute, BufferGeometry, Color, CylinderGeometry, FogExp2, Group, InstancedMesh, LineBasicMaterial,
-  LineSegments, Matrix4, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, PMREMGenerator, Scene, SpotLight, Vector3, type Material,
+  LineSegments, Matrix4, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, PMREMGenerator, Scene, SpotLight, Vector3, CubeCamera, WebGLCubeRenderTarget, HalfFloatType, type Material,
 } from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
@@ -15,10 +15,13 @@ import { SceneFx } from './fx';
 import { buildHubObjects, hubInteractables, type HubState } from './hubObjects';
 import { buildTestProps, type PropSet } from './props';
 import { ChunkStreamer } from '../gen/chunks';
-import { type ChunkData, type MatKey } from '../gen/mesher';
+import { type ChunkData, type MatKey, type LightDef, LAMP_W, LAMP_D, levelLights } from '../gen/mesher';
+import { bakeLighting } from '../render/bake';
+import { createSurfaceShared, setBake, type SurfaceShared } from '../render/surface';
 import { LightPool, flickerAt } from '../render/lights';
 import { Dust } from '../render/atmosphere';
 import { MaterialLibrary } from '../render/materials';
+import { Viewmodel } from '../render/viewmodel';
 import { bus } from '../core/events';
 import type { Services } from '../core/services';
 import type { InputFrame } from '../core/input/logic';
@@ -30,7 +33,23 @@ import { itemDef } from '../systems/items';
 
 interface ChunkVis { group: Group; lamps: InstancedMesh | null; lampDefs: ChunkData['lights'] }
 
-const LAMP_GEO = new BoxGeometry(1.4, 0.05, 0.55);
+const LAMP_GEO = new BoxGeometry(LAMP_W, 0.022, LAMP_D);
+
+/** Flashlight cookie: hot centre, a soft reflector ring, dark rings and slight lens grime. */
+function flashCookie(): CanvasTexture {
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  const g = c.getContext('2d')!;
+  g.fillStyle = '#000'; g.fillRect(0, 0, 256, 256);
+  const grad = g.createRadialGradient(128, 128, 0, 128, 128, 126);
+  for (const [o, v] of [[0, 255], [0.12, 250], [0.22, 205], [0.3, 150], [0.38, 170], [0.46, 120], [0.6, 80], [0.72, 58], [0.86, 26], [1, 0]] as [number, number][]) grad.addColorStop(o, `rgb(${v},${Math.round(v * 0.97)},${Math.round(v * 0.9)})`);
+  g.fillStyle = grad; g.beginPath(); g.arc(128, 128, 126, 0, Math.PI * 2); g.fill();
+  g.globalCompositeOperation = 'multiply';
+  for (let i = 0; i < 40; i++) { const a = (i * 2.399) % (Math.PI * 2), r = 20 + ((i * 37) % 90); g.fillStyle = `rgba(150,150,150,${0.06 + (i % 5) * 0.02})`; g.beginPath(); g.arc(128 + Math.cos(a) * r, 128 + Math.sin(a) * r, 6 + (i % 7) * 3, 0, Math.PI * 2); g.fill(); }
+  const t = new CanvasTexture(c); t.colorSpace = SRGBColorSpace;
+  return t;
+}
+/** Lamp fixture centre relative to its LightDef (defs sit 6 cm under the ceiling; panels hang just under the T-bars). */
+const LAMP_DY = 0.06 - 0.011 - 0.016;
 
 export class LevelScene {
   readonly scene = new Scene();
@@ -75,6 +94,9 @@ export class LevelScene {
   private ambientBase = 0.4;
   private dyn: PointLight[] = [];
   private hubObj: ReturnType<typeof buildHubObjects> | null = null;
+  private surface: SurfaceShared = createSurfaceShared();
+  private bakeLamps: LightDef[] = [];
+  private viewmodel: Viewmodel | null = null;
 
   constructor(private svc: Services, readonly def: LevelDef, readonly seed: number, readonly difficulty: DifficultyId = 'normal', private tierOverride?: TierDef,
     private opts: { hub?: HubState; sim?: SimOptions; snapshot?: SimSnapshot; genParams?: Record<string, unknown> } = {}) {}
@@ -92,7 +114,14 @@ export class LevelScene {
     const planId = await svc.pool.setPlan(this.plan);
 
     progress(0.1, 'Synthesizing materials');
-    this.lib = new MaterialLibrary(tier, svc.pool, svc.gfx.maxAnisotropy, def.look, this.seed);
+    // static lighting bake: every ceiling lamp + first bounce + room-box AO (a few ms)
+    this.bakeLamps = levelLights(this.plan);
+    setBake(this.surface, bakeLighting(this.plan, this.bakeLamps));
+    this.surface.uBakeTint.value.setHex(0xfff2c0);
+    this.surface.uBakeBounce.value = tier.materials === 'standard' ? 0.5 : 0.6;
+    this.surface.uPoolR.value = 0;
+    this.extras.push({ dispose: () => { this.surface.uBakeLight.value?.dispose(); this.surface.uBakeGeo.value?.dispose(); } });
+    this.lib = new MaterialLibrary(tier, svc.pool, svc.gfx.maxAnisotropy, def.look, this.seed, this.surface);
     await this.lib.load((d, t) => progress(0.1 + 0.5 * (d / t), 'Synthesizing materials'));
 
     const look = def.look;
@@ -100,7 +129,8 @@ export class LevelScene {
     this.scene.fog = new FogExp2(look.fogColor, look.fogDensity / Math.max(0.5, st.drawDistance));
     this.fogBase = { color: new Color(look.fogColor), density: look.fogDensity / Math.max(0.5, st.drawDistance) };
     this.ambientBase = look.ambientIntensity;
-    this.ambient = new AmbientLight(look.ambient, look.ambientIntensity);
+    this.ambientBase = look.ambientIntensity * 0.55; // baked bounce now carries most of the fill light
+    this.ambient = new AmbientLight(look.ambient, this.ambientBase);
     this.scene.add(this.ambient);
     if (tier.materials === 'standard') {
       const pm = new PMREMGenerator(svc.gfx.renderer);
@@ -115,14 +145,19 @@ export class LevelScene {
     if (tier.dust > 0 && st.dust) { this.dust = new Dust(tier.dust, look.dust); this.dust.addTo(this.scene); }
 
     // flashlight (spot light parented to the scene, positioned each frame at the camera)
-    this.flash = new SpotLight(0xfff1d6, 55, 26, 0.5, 0.55, 1.6);
+    this.flash = new SpotLight(0xfff1d6, 40, 26, 0.5, 0.55, 1.6);
     this.flash.castShadow = shadowLights > 0;
+    if (this.flash.castShadow) { this.flash.map = flashCookie(); this.extras.push(this.flash.map); } // projected beam pattern (needs the shadow map)
+    this.flash.shadow.camera.near = 0.1;
     this.flash.shadow.mapSize.set(tier.shadowMap, tier.shadowMap);
     this.flash.shadow.bias = -0.0005;
     this.scene.add(this.flash, this.flashTarget);
     this.flash.target = this.flashTarget;
     for (const col of [0xff6a30, 0x70ff90]) { const l = new PointLight(col, 0, 12, 2); this.scene.add(l); this.dyn.push(l); }
     this.ev = new EntityVisuals(this.scene, tier.level);
+    this.viewmodel = new Viewmodel(tier.level);
+    this.scene.add(svc.gfx.camera);
+    this.viewmodel.attachTo(svc.gfx.camera);
 
     progress(0.65, 'Building geometry');
     const radius = tier.drawDistance * st.drawDistance;
@@ -133,6 +168,7 @@ export class LevelScene {
       { onLoad: (c) => this.addChunk(c), onUnload: (k) => this.removeChunk(k) },
     );
     await this.streamer.preload(this.plan.spawn.pos.x, this.plan.spawn.pos.z, Math.min(radius, 30));
+    if (tier.materials === 'standard') this.captureEnvironment();
     progress(0.85, 'Placing objects');
     await this.buildObjects();
     this.fx = new SceneFx(svc, this.sim, this.ev, () => this.lights, this.fearBox);
@@ -142,9 +178,32 @@ export class LevelScene {
     this.sim.player.holdCrouchToggle = st.holdToggleCrouch === 'toggle';
     this.sim.player.holdSprintToggle = st.holdToggleSprint === 'toggle';
     svc.gfx.applyLook(look);
+    svc.gfx.resetExposure();
     this.startAudio();
     progress(1, 'Ready');
     bus.emit('level:loaded', { id: def.id, seed: this.seed });
+  }
+
+  /** Reflection capture: render the real level around the spawn into a cube map and prefilter it (PMREM). */
+  private captureEnvironment(): void {
+    const r = this.svc.gfx.renderer;
+    const rt = new WebGLCubeRenderTarget(128, { type: HalfFloatType });
+    const cam = new CubeCamera(0.05, 60, rt);
+    cam.position.set(this.plan.spawn.pos.x, 1.5, this.plan.spawn.pos.z);
+    const prevEnv = this.scene.environment, fog = this.scene.fog;
+    this.scene.environment = null; this.scene.fog = null;
+    this.surface.uPoolR.value = 0; // fully baked lighting for the capture
+    this.dust?.points.removeFromParent();
+    cam.update(r, this.scene);
+    if (this.dust) this.scene.add(this.dust.points);
+    this.scene.fog = fog;
+    const pm = new PMREMGenerator(r);
+    const env = pm.fromCubemap(rt.texture);
+    rt.dispose(); pm.dispose();
+    this.scene.environment = env.texture;
+    this.scene.environmentIntensity = 0.6;
+    if (prevEnv) prevEnv.dispose();
+    this.extras.push({ dispose: () => env.dispose() });
   }
 
   private async buildObjects(): Promise<void> {
@@ -299,7 +358,7 @@ export class LevelScene {
     const defs = c.lights;
     if (defs.length) {
       lamps = new InstancedMesh(LAMP_GEO, this.lib.lamp, defs.length);
-      defs.forEach((d, i) => { this.tmpM.makeTranslation(d.x, d.y, d.z); lamps!.setMatrixAt(i, this.tmpM); lamps!.setColorAt(i, this.tmpC.setScalar(d.broken ? 0.02 : 1)); });
+      defs.forEach((d, i) => { this.tmpM.makeTranslation(d.x, d.y + LAMP_DY, d.z); lamps!.setMatrixAt(i, this.tmpM); lamps!.setColorAt(i, this.tmpC.setScalar(d.broken ? 0.02 : 1)); });
       lamps.frustumCulled = false;
       group.add(lamps);
       this.lights.setSources([...this.lights.all, ...defs]);
@@ -382,11 +441,15 @@ export class LevelScene {
     cam.getWorldDirection(this.fwd);
     this.streamer.update(cam.position.x, cam.position.z);
     this.lights.update(cam.position.x, cam.position.y, cam.position.z, this.time, dt);
+    this.surface.uPoolR.value = this.lights.coverRadius;
     this.dust?.update(this.time, cam.position.x, cam.position.z);
     this.props?.update(this.time);
     // flashlight follows the camera with a little lag-free offset
     const flashOut = this.sim.inv.has('flashlight') && this.sim.flash.on ? this.sim.flash.output(this.time) : 0;
-    this.flash.visible = flashOut > 0.01; this.flash.intensity = 55 * flashOut;
+    this.flash.visible = flashOut > 0.01; this.flash.intensity = 40 * flashOut;
+    const hasFlash = this.sim.inv.has('flashlight');
+    cam.updateMatrixWorld();
+    this.viewmodel?.update(dt, hasFlash && !this.sim.hidden, flashOut, p.yaw, p.pitch, Math.min(1, p.speed / 3), this.time);
     this.ev.sync(this.sim.ew, this.time, dt);
     this.fx.update(dt, cam, flashOut > 0.4);
     this.hubObj?.update(this.time, p.x, p.z);
@@ -402,7 +465,8 @@ export class LevelScene {
     // flare + glowstick light (fixed light count: no shader recompiles)
     const fl = this.sim.flares[this.sim.flares.length - 1], gl = this.sim.glows[this.sim.glows.length - 1];
     for (const [i, src] of [fl, gl].entries()) { const l = this.dyn[i]; if (src) { l.position.set(src.x, 0.4, src.z); l.intensity = (i === 0 ? 16 : 5) * Math.min(1, src.t / 4); } else l.intensity = 0; }
-    this.flash.position.copy(cam.position).addScaledVector(this.fwd, 0.1);
+    if (this.viewmodel?.group.visible) this.viewmodel.lensWorld(this.flash.position).addScaledVector(this.fwd, 0.02);
+    else this.flash.position.copy(cam.position).addScaledVector(this.fwd, 0.1);
     this.flashTarget.position.copy(cam.position).addScaledVector(this.fwd, 6);
     // flicker lamp emissive per instance (only flickering ones)
     for (const v of this.chunks.values()) {
@@ -455,6 +519,9 @@ export class LevelScene {
   /** Breaker flipped: relight every lamp in these rooms (sections of the Garage). */
   restoreRooms(rooms: number[]): void {
     const set = new Set(rooms);
+    let changed = false;
+    for (const d of this.bakeLamps) if (set.has(d.room) && d.broken) { d.broken = false; changed = true; }
+    if (changed) setBake(this.surface, bakeLighting(this.plan, this.bakeLamps));
     for (const v of this.chunks.values()) {
       let dirty = false;
       v.lampDefs.forEach((d, i) => { if (set.has(d.room) && d.broken) { d.broken = false; v.lamps?.setColorAt(i, this.tmpC.setScalar(1)); dirty = true; } });
@@ -466,7 +533,7 @@ export class LevelScene {
 
   dispose(): void {
     document.body.classList.remove('hiding');
-    this.ev.dispose(); this.hubObj?.dispose();
+    this.ev.dispose(); this.hubObj?.dispose(); this.viewmodel?.dispose();
     for (const h of this.humHandles) h.stop(0.3);
     for (const k of [...this.chunks.keys()]) this.removeChunk(k);
     this.propMeshes.forEach((m) => { m.dispose(); m.removeFromParent(); });

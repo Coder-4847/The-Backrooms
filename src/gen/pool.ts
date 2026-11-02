@@ -67,5 +67,23 @@ export class WorkerPool {
     return this.send({ type: 'texture', kind, seed, size, variant }) as Promise<TexSet>;
   }
 
-  dispose(): void { this.workers.forEach((w) => w.terminate()); this.workers = []; }
+  private bg: Worker | null = null;
+  private bgPending = new Map<number, (r: TexSet | null) => void>();
+  /**
+   * Low-priority texture synthesis on a dedicated background worker (high-resolution streaming), so it
+   * never queues ahead of chunk meshing. Resolves null where workers are unavailable (no main-thread stalls).
+   */
+  textureBackground(kind: TexKind, seed: number, size: number, variant: number): Promise<TexSet | null> {
+    if (this.inline) return Promise.resolve(null);
+    if (!this.bg) {
+      try {
+        this.bg = new Worker(new URL('./gen.worker.ts', import.meta.url), { type: 'module' });
+        this.bg.onmessage = (e: MessageEvent<{ id: number; result?: WorkResult; error?: string }>) => { const r = this.bgPending.get(e.data.id); this.bgPending.delete(e.data.id); r?.(e.data.error ? null : (e.data.result as TexSet)); };
+      } catch { return Promise.resolve(null); }
+    }
+    const id = this.nextId++;
+    return new Promise((resolve) => { this.bgPending.set(id, resolve); this.bg!.postMessage({ id, req: { type: 'texture', kind, seed, size, variant } }); });
+  }
+
+  dispose(): void { this.workers.forEach((w) => w.terminate()); this.workers = []; this.bg?.terminate(); this.bg = null; this.bgPending.forEach((r) => r(null)); this.bgPending.clear(); }
 }

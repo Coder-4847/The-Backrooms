@@ -34,11 +34,11 @@ export interface TierDef {
 }
 
 export const TIERS: Record<TierId, TierDef> = {
-  ultra:  { id: 'ultra',  level: 4, label: 'Ultra',  resolution: 1,    maxPixelRatio: 2,   lights: 10, shadowLights: 2, shadowMap: 1024, textureSize: 1024, post: 'full',  bloom: true,  ssao: true,  ssaoScale: 1,    dust: 1500, drawDistance: 70, materials: 'standard', fpsTarget: 60, frameBudgetMs: 16.7 },
-  high:   { id: 'high',   level: 3, label: 'High',   resolution: 1,    maxPixelRatio: 1.5, lights: 8,  shadowLights: 2, shadowMap: 512,  textureSize: 512,  post: 'full',  bloom: true,  ssao: true,  ssaoScale: 0.5,  dust: 800,  drawDistance: 60, materials: 'standard', fpsTarget: 60, frameBudgetMs: 16.7 },
-  medium: { id: 'medium', level: 2, label: 'Medium', resolution: 0.85, maxPixelRatio: 1.25, lights: 5, shadowLights: 1, shadowMap: 256,  textureSize: 256,  post: 'light', bloom: true,  ssao: false, ssaoScale: 0.5,  dust: 300,  drawDistance: 50, materials: 'standard', fpsTarget: 60, frameBudgetMs: 16.7 },
-  low:    { id: 'low',    level: 1, label: 'Low',    resolution: 0.7,  maxPixelRatio: 1,   lights: 3,  shadowLights: 0, shadowMap: 256,  textureSize: 128,  post: 'light', bloom: false, ssao: false, ssaoScale: 0.5,  dust: 80,   drawDistance: 40, materials: 'lambert',  fpsTarget: 45, frameBudgetMs: 22 },
-  potato: { id: 'potato', level: 0, label: 'Potato', resolution: 0.5,  maxPixelRatio: 1,   lights: 2,  shadowLights: 0, shadowMap: 256,  textureSize: 64,   post: 'none',  bloom: false, ssao: false, ssaoScale: 0.5,  dust: 0,    drawDistance: 28, materials: 'lambert',  fpsTarget: 30, frameBudgetMs: 33.3 },
+  ultra:  { id: 'ultra',  level: 4, label: 'Ultra',  resolution: 1,    maxPixelRatio: 2,   lights: 10, shadowLights: 2, shadowMap: 2048, textureSize: 2048, post: 'full',  bloom: true,  ssao: true,  ssaoScale: 1,    dust: 1500, drawDistance: 70, materials: 'standard', fpsTarget: 60, frameBudgetMs: 16.7 },
+  high:   { id: 'high',   level: 3, label: 'High',   resolution: 1,    maxPixelRatio: 1.5, lights: 8,  shadowLights: 2, shadowMap: 1024, textureSize: 1024,  post: 'full',  bloom: true,  ssao: true,  ssaoScale: 0.5,  dust: 800,  drawDistance: 60, materials: 'standard', fpsTarget: 60, frameBudgetMs: 16.7 },
+  medium: { id: 'medium', level: 2, label: 'Medium', resolution: 0.85, maxPixelRatio: 1.25, lights: 5, shadowLights: 1, shadowMap: 512,  textureSize: 512,  post: 'light', bloom: true,  ssao: false, ssaoScale: 0.5,  dust: 300,  drawDistance: 50, materials: 'standard', fpsTarget: 60, frameBudgetMs: 16.7 },
+  low:    { id: 'low',    level: 1, label: 'Low',    resolution: 0.7,  maxPixelRatio: 1,   lights: 3,  shadowLights: 0, shadowMap: 256,  textureSize: 256,  post: 'light', bloom: false, ssao: false, ssaoScale: 0.5,  dust: 80,   drawDistance: 40, materials: 'lambert',  fpsTarget: 45, frameBudgetMs: 22 },
+  potato: { id: 'potato', level: 0, label: 'Potato', resolution: 0.5,  maxPixelRatio: 1,   lights: 2,  shadowLights: 0, shadowMap: 256,  textureSize: 128,  post: 'none',  bloom: false, ssao: false, ssaoScale: 0.5,  dust: 0,    drawDistance: 28, materials: 'lambert',  fpsTarget: 30, frameBudgetMs: 33.3 },
 };
 
 export interface HardwareInfo {
