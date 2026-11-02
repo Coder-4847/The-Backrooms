@@ -1,0 +1,35 @@
+{
+  "name": "noclip",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "lint": "eslint src tests tools",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "validate:levels": "tsx tools/validate-levels.ts",
+    "bot": "tsx tools/bot.ts",
+    "perf": "tsx tools/perf.ts",
+    "shots": "tsx tools/shots.ts",
+    "smoke": "tsx tools/smoke.ts",
+    "verify": "npm run typecheck && npm run lint && npm run test && npm run validate:levels"
+  },
+  "dependencies": {
+    "three": "^0.187.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/three": "^0.187.0",
+    "eslint": "^9.0.0",
+    "@eslint/js": "^9.0.0",
+    "playwright": "1.63.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "typescript-eslint": "^8.0.0",
+    "vite": "^7.0.0",
+    "vitest": "^3.0.0"
+  }
+}

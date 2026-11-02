@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+    <meta name="theme-color" content="#0b0a06" />
+    <meta name="description" content="NOCLIP: a procedurally generated, found-footage Backrooms survival horror game for the browser." />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" href="./icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./icon-192.png" />
+    <title>NOCLIP</title>
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="gl" tabindex="-1"></canvas>
+      <div id="hud" hidden></div>
+      <div id="ui"></div>
+      <noscript>NOCLIP needs JavaScript and WebGL2.</noscript>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

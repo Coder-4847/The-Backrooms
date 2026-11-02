@@ -1,0 +1,8 @@
+node_modules
+dist
+shots
+reports
+*.log
+.DS_Store
+public/assets/cc0/*
+!public/assets/cc0/manifest.json
