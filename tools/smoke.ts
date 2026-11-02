@@ -123,7 +123,8 @@ try {
   check('Wheat Field is outdoors with a compass', wf.id === 'wheatfield' && (await ev(() => { const L = (window as any).__game.level; return L.plan.open && L.plan.rooms.some((r: any) => r.open) && L.plan.items.some((i: any) => i.item === 'compass'); })));
   const ar = await startL('arctic');
   await ev(() => { const L = (window as any).__game.level; L.sim.ew.entities.length = 0; const r = L.plan.rooms.find((q: any) => !L.plan.cold.warm.includes(q.id) && !q.open && q.w > 6); L.sim.player.place(r.x + r.w / 2, r.z + r.d / 2); });
-  await page.waitForTimeout(3000);
+  await page.waitForFunction(() => (window as any).__game.level.sim.stats.warmth < 98, null, { timeout: 60000 }).catch(() => {});
+  await page.waitForTimeout(500);
   check('Arctic: warmth drains and the WARM bar shows', (await ev(() => (window as any).__game.level.sim.stats.warmth)) < 100 && (await page.locator('.vitals').innerText()).includes('WARM'), JSON.stringify(ar.ents));
   const mt = await startL('metro');
   check('Metro has a schedule and Wraiths', mt.id === 'metro' && (await ev(() => !!(window as any).__game.level.plan.schedule)) && mt.ents.includes('wraith'));
