@@ -49,12 +49,10 @@ describe('Director dread', () => {
 });
 
 describe('roaming hunters and ambushes', () => {
-  it('every level with hostiles gets roaming extras on Normal, none on Easy, never in the hub', () => {
+  it('every level with hostiles gets roaming extras on Normal, none on Easy', () => {
     const base = (d: 'easy' | 'normal') => new LevelSim(plan, d, { seed: 3 }).ew.entities.filter((e) => e.def.damage > 0);
     expect(base('normal').some((e) => e.data.extra)).toBe(true);
     expect(base('easy').some((e) => e.data.extra)).toBe(false);
-    const hub = levelById('hub')?.generate(1, {});
-    if (hub) expect(new LevelSim(hub, 'normal', { spawnEntities: false }).ew.entities).toHaveLength(0);
   });
   it('a Director ambush spawns a hunter out of sight that goes after you, then fades if unseen', () => {
     const sim = new LevelSim(plan, 'normal', { seed: 9 });

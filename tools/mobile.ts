@@ -24,20 +24,22 @@ try {
     await page.waitForTimeout(800);
     const vis = await page.evaluate(() => { const r = document.querySelector('.touch-root') as HTMLElement | null; return { shown: !!r && r.style.display !== 'none', btns: document.querySelectorAll('.touch-btn').length }; });
     check(`${name}: touch controls visible in play`, vis.shown && vis.btns >= 4, JSON.stringify(vis));
-    // the contextual interact button: appears only with something in reach, shows the verb, a real tap works
+    // new game lands straight in Level 0; the contextual interact button appears next to a note and a real tap works
+    check(`${name}: New Game starts Level 0 directly`, await page.evaluate(() => (window as any).__game.level.def.id === 'level0'));
+    await page.evaluate(() => { const L = (window as any).__game.level; L.sim.director.update = () => null; L.sim.ew.entities.length = 0; const n = L.plan.items.find((i: any) => i.kind === 'note'); L.sim.player.place(n.pos.x + 0.6, n.pos.z, 0); });
+    await page.waitForFunction(() => { const b = document.querySelector('.touch-interact') as HTMLElement | null; return !!b && !b.hidden; }, null, { timeout: 20000 }).catch(() => undefined);
     const btn = await page.evaluate(() => { const b = document.querySelector('.touch-interact') as HTMLElement | null; return b ? { hidden: b.hidden, text: b.textContent, w: b.getBoundingClientRect().width, h: b.getBoundingClientRect().height } : null; });
-    check(`${name}: Interact button is up next to the first door`, !!btn && !btn.hidden && btn.h >= 80, JSON.stringify(btn));
-    check(`${name}: objective line tells you what to do`, ((await page.textContent('.objective')) ?? '').toLowerCase().includes('door'), (await page.textContent('.objective')) ?? '');
+    check(`${name}: Interact button is up next to a note`, !!btn && !btn.hidden && btn.h >= 80, JSON.stringify(btn));
+    check(`${name}: objective line tells you what to do`, ((await page.textContent('.objective')) ?? '').length > 8, (await page.textContent('.objective')) ?? '');
     await page.screenshot({ path: `shots/mobile-play-${name}.png` });
     await page.tap('.touch-interact');
-    await page.waitForSelector('.panel, .screen', { timeout: 5000 }).catch(() => undefined);
-    const opened = await page.evaluate(() => (window as any).__game.ui.panelOpen);
-    check(`${name}: tapping Interact opens the door panel`, opened === true);
-    await page.screenshot({ path: `shots/mobile-door-${name}.png` });
+    await page.waitForSelector('.paper', { timeout: 8000 }).catch(() => undefined);
+    check(`${name}: tapping Interact reads the note`, await page.evaluate(() => (window as any).__game.ui.panelOpen === true));
+    await page.screenshot({ path: `shots/mobile-note-${name}.png` });
     await page.evaluate(() => (window as any).__game.ui.closePanel());
     // away from everything the button disappears
-    await page.evaluate(() => { const p = (window as any).__game.level.sim.player; p.place(p.x, 3, 0); });
-    await page.waitForTimeout(900);
+    await page.evaluate(() => { const L = (window as any).__game.level; const r = L.plan.rooms[L.plan.spawn.room]; L.sim.player.place(r.x + r.w / 2, r.z + r.d / 2, 0); L.plan.items.forEach((i: any) => L.sim.collected.add(i.id)); L.plan.hides.length = 0; L.clues.length = 0; });
+    await page.waitForTimeout(1200);
     check(`${name}: Interact button hides when nothing is in reach`, await page.evaluate(() => (document.querySelector('.touch-interact') as HTMLElement).hidden));
     check(`${name}: no page errors`, errs.length === 0, errs.slice(0, 2).join(' | '));
     await ctx.close();

@@ -14,7 +14,6 @@ export class Inventory {
   stacks: Stack[] = [];
   hotbar: (string | null)[] = [null, null, null, null];
   selected = 0;
-  stash: { id: string; n: number }[] = [];
 
   private occupied(skip?: Stack): boolean[] {
     const g = new Array(GRID_W * GRID_H).fill(false);
@@ -87,33 +86,19 @@ export class Inventory {
   get held(): string | null { const id = this.hotbar[this.selected]; return id && this.has(id) ? id : null; }
 
   toState(): InventoryState {
-    return { hotbar: [...this.hotbar], backpack: this.stacks.map((s) => ({ id: s.id, n: s.n })), stash: this.stash.map((s) => ({ ...s })) };
+    return { hotbar: [...this.hotbar], backpack: this.stacks.map((s) => ({ id: s.id, n: s.n })) };
   }
 
   static fromState(st: InventoryState): Inventory {
     const inv = new Inventory();
     for (const b of st.backpack) inv.add(b.id, b.n);
+    for (const b of st.stash ?? []) inv.add(b.id, b.n); // old saves: whatever sat in the hub lockers comes along
     inv.hotbar = [...st.hotbar];
-    inv.stash = st.stash.map((s) => ({ ...s }));
     return inv;
   }
 
   /** Starting kit for a new run. */
   static starter(): Inventory { const i = new Inventory(); i.add('flashlight'); i.add('camcorder'); i.add('battery', 1); i.add('almond_water', 1); return i; }
-
-  /** Stash transfer helpers (hub lockers). */
-  stashIn(id: string, n = 1): boolean {
-    if (!this.remove(id, n)) return false;
-    const e = this.stash.find((s) => s.id === id);
-    if (e) e.n += n; else this.stash.push({ id, n });
-    return true;
-  }
-  stashOut(id: string, n = 1): boolean {
-    const e = this.stash.find((s) => s.id === id);
-    if (!e || e.n < n || this.add(id, n) > 0) { return false; }
-    e.n -= n; if (e.n === 0) this.stash.splice(this.stash.indexOf(e), 1);
-    return true;
-  }
 }
 
 /** Death penalty (spec 5.7) applied to the checkpoint inventory. Essentials (tools, keys) are always kept. */

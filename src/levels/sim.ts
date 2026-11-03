@@ -105,8 +105,7 @@ export class LevelSim {
   glows: { x: number; z: number; t: number }[] = [];
   dead = false;
   deaths = 0;
-  /** Hub: always safe (sanity recovers) and extra interactables (doors, NPCs, stations). */
-  alwaysSafe = false;
+  /** Extra interactables layered on the level's own (clue notes). */
   extra: (() => Interactable[]) | null = null;
   room = 0;
   intensity: number;
@@ -172,7 +171,6 @@ export class LevelSim {
     return Math.min(1, base + this.flash.output(this.time) * 0.3 + (this.glows.length || this.flares.length ? 0.25 : 0));
   }
   get safeRoom(): boolean {
-    if (this.alwaysSafe) return true;
     const r = this.plan.rooms[this.room];
     if (r?.kind === 'supply') return true;
     const p = this.player;
@@ -261,7 +259,7 @@ export class LevelSim {
    * Picks one of the level's own hostile types; capped so a long session cannot flood the level.
    */
   private ambush(): void {
-    if (this.opts.spawnEntities === false || this.plan.hub || this.plan.entitySlots.some((s) => s.entity === 'pursuer')) return;
+    if (this.opts.spawnEntities === false || this.plan.entitySlots.some((s) => s.entity === 'pursuer')) return;
     const p = this.player;
     const live = this.ew.entities.filter((e) => e.def.damage > 0).length;
     if (live >= 3 + Math.round(this.diff.ambush)) return;
@@ -297,7 +295,7 @@ export class LevelSim {
     for (const d of this.doors.values()) if (!d.open) out.push({ kind: 'door', x: d.conn.door.x, z: d.conn.door.z, label: this.keys.has(d.conn.lock!) ? 'Unlock door' : lockHint(d.conn.lock!), ref: d });
     this.waypoints.forEach((w, i) => out.push({ kind: 'waypoint', x: w.pos.x, z: w.pos.z, label: this.activatedWaypoints.has(i) ? 'Checkpoint (set)' : 'Activate checkpoint', ref: i }));
     for (const h of this.plan.hides ?? []) out.push({ kind: 'hide', x: h.pos.x, z: h.pos.z, label: h.kind === 'locker' ? 'Hide in locker' : 'Hide under desk', ref: h });
-    if (!this.plan.hub && !this.plan.finale) out.push({ kind: 'exit', x: this.plan.exit.pos.x, z: this.plan.exit.pos.z, label: 'Leave', ref: null });
+    if (!this.plan.finale) out.push({ kind: 'exit', x: this.plan.exit.pos.x, z: this.plan.exit.pos.z, label: 'Leave', ref: null });
     if (this.extra) out.push(...this.extra());
     out.push(...this.x.interactables());
     const near = out.filter((o) => Math.hypot(o.x - p.x, o.z - p.z) <= REACH);

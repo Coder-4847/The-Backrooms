@@ -1,4 +1,4 @@
-/** The 25-level campaign table (spec 8.2). The hub shows every entry; `implemented` comes from the LEVELS registry. */
+/** The 25-level campaign table (spec 8.2). Levels play in this order; the replay menu lists the ones a save has reached. */
 export interface CampaignEntry { id: string; name: string; act: 1 | 2 | 3; tier: 'chill' | 'uneasy' | 'tense' | 'horror'; color: string }
 
 const E = (id: string, name: string, act: 1 | 2 | 3, tier: CampaignEntry['tier'], color: string): CampaignEntry => ({ id, name, act, tier, color });

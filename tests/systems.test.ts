@@ -10,7 +10,6 @@ import { level0 } from '../src/levels/level0';
 import { emptyFrame } from '../src/core/input/logic';
 import { SAVE_VERSION, newSlot } from '../src/core/save';
 import { NOTES, LEVEL_NOTES } from '../src/story/notes';
-import { NPCS } from '../src/story/npcs';
 
 describe('inventory', () => {
   it('stacks, respects stack limits and grid space, and reports overflow', () => {
@@ -43,11 +42,10 @@ describe('inventory', () => {
     const heavy = new Inventory(); for (let i = 0; i < 8; i++) heavy.add('almond_water', 4);
     expect(heavy.weightFactor).toBeLessThan(1);
   });
-  it('stash transfers items both ways', () => {
-    const inv = Inventory.starter();
-    expect(inv.stashIn('battery')).toBe(true); expect(inv.has('battery')).toBe(false); expect(inv.stash[0]).toEqual({ id: 'battery', n: 1 });
-    expect(inv.stashOut('battery')).toBe(true); expect(inv.has('battery')).toBe(true); expect(inv.stash).toHaveLength(0);
-    expect(inv.stashOut('battery')).toBe(false);
+  it('old saves: items that sat in the stash lockers come along in the backpack', () => {
+    const inv = Inventory.fromState({ hotbar: [null, null, null, null], backpack: [{ id: 'battery', n: 1 }], stash: [{ id: 'battery', n: 2 }, { id: 'flare', n: 1 }] });
+    expect(inv.count('battery')).toBe(3); expect(inv.count('flare')).toBe(1);
+    expect(inv.toState()).not.toHaveProperty('stash');
   });
   it('death penalty scales with difficulty and never takes essentials', () => {
     const lose = (p: Parameters<typeof applyDeathPenalty>[1]) => {
@@ -177,7 +175,4 @@ describe('Level 0 in the real simulation', () => {
     expect(JSON.stringify(level0.generate(77, { difficulty: 'nightmare' }))).toBe(JSON.stringify(plan));
   });
   it('save slot format carries the version used by Phase 1', () => { expect(newSlot(1, 'normal', 'x').version).toBe(SAVE_VERSION); });
-  it('NPC dialogue graphs are consistent: every next node exists', () => {
-    for (const n of Object.values(NPCS)) { expect(n.nodes[n.start]).toBeDefined(); for (const node of Object.values(n.nodes)) for (const c of node.choices) if (c.next) expect(n.nodes[c.next], `${n.id}:${c.text}`).toBeDefined(); }
-  });
 });

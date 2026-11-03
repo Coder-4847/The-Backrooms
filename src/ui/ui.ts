@@ -9,7 +9,8 @@ import { DIFFICULTIES, DIFFICULTY_ORDER, type DifficultyId } from '../core/diffi
 import { SLOT_COUNT, type SlotData } from '../core/save';
 import { debugEnabled } from '../core/debug';
 import { randomSeedString } from '../gen/rng';
-import { achievementsPanel, bestiaryPanel, creditsPanel, endingGalleryPanel, howToPlayPanel } from './panels2';
+import { achievementsPanel, bestiaryPanel, camcorderPanel, creditsPanel, endingGalleryPanel, howToPlayPanel } from './panels2';
+import { replayPanel } from './panels';
 import { glyphFor } from '../core/input/actions';
 import { itemDef } from '../systems/items';
 import type { Settings } from '../core/settings';
@@ -160,12 +161,14 @@ export class Ui {
       h('div', { class: 'menu' },
         h('button', { class: 'btn primary', onclick: () => this.continueScreen() }, hasSave ? 'Continue' : 'Continue / Load'),
         h('button', { class: 'btn', onclick: () => this.newGameScreen() }, 'New Game'),
+        h('button', { class: 'btn', onclick: () => void this.replayScreen() }, 'Replay a Level'),
         h('button', { class: 'btn', onclick: () => this.manageScreen() }, 'Manage Saves'),
         h('button', { class: 'btn', onclick: () => this.settingsScreen() }, 'Settings'),
         this.game.profile.ngPlus.includes('unlocked') ? h('button', { class: 'btn', onclick: () => this.newGameScreen(undefined, true) }, 'New Game+') : null,
         h('button', { class: 'btn', onclick: () => this.show(bestiaryPanel(this.game, () => this.showTitle())) }, 'Bestiary'),
         h('button', { class: 'btn', onclick: () => this.show(endingGalleryPanel(this.game, () => this.showTitle())) }, 'Ending Gallery'),
         h('button', { class: 'btn', onclick: () => this.show(achievementsPanel(this.game, () => this.showTitle())) }, 'Achievements'),
+        h('button', { class: 'btn', onclick: () => this.show(camcorderPanel(this.game, () => this.showTitle())) }, 'Camcorder Lenses'),
         h('button', { class: 'btn', onclick: () => this.show(howToPlayPanel(() => this.showTitle())) }, 'How to Play'),
         h('button', { class: 'btn', onclick: () => this.show(creditsPanel(() => this.showTitle())) }, 'Credits'),
         ...(debugEnabled() ? [h('hr'), h('button', { class: 'btn ghost', onclick: () => void this.launch('testroom') }, 'Test Room'), h('button', { class: 'btn ghost', onclick: () => void this.launch('placeholder') }, 'Placeholder Level'), h('button', { class: 'btn ghost', onclick: () => void this.launch('level0') }, 'Level 0 (standalone)')] : [])),
@@ -202,6 +205,32 @@ export class Ui {
     slots.forEach((s, i) => wrap.append(this.slotCard(i, s, s ? [h('button', { class: 'btn small primary', onclick: () => void this.resume(s) }, 'Play')] : [h('button', { class: 'btn small', onclick: () => this.newGameScreen(i + 1) }, 'New game')])));
     wrap.append(h('div', { class: 'btn-row' }, h('button', { class: 'btn', onclick: () => this.showTitle() }, 'Back')));
     this.show(wrap);
+  }
+
+  /**
+   * Replay a Level: choose a save (skipped when only one exists), then any level that save has reached.
+   * Reaching further levels in a save unlocks them here.
+   */
+  private async replayScreen(): Promise<void> {
+    const slots = await this.game.saves.listSlots();
+    this.slotsCache = slots;
+    const used = slots.map((s, i) => ({ s, i })).filter((x): x is { s: SlotData; i: number } => !!x.s);
+    if (!used.length) { this.show(h('div', { class: 'screen center' }, h('h2', {}, 'Replay a level'), h('p', {}, 'Start a New Game first: levels you reach are unlocked for replay in that save.'), h('div', { class: 'btn-row' }, h('button', { class: 'btn primary', onclick: () => this.newGameScreen() }, 'New Game'), h('button', { class: 'btn', onclick: () => this.showTitle() }, 'Back')))); return; }
+    const open = (s: SlotData) => { this.game.currentSlot = s; this.game.ensureAudio(); this.show(replayPanel(this.game, s, () => (used.length > 1 ? void this.replayScreen() : this.showTitle()))); };
+    if (used.length === 1) { open(used[0].s); return; }
+    const wrap = h('div', { class: 'screen' }, h('h2', {}, 'Replay a level'), h('p', { class: 'muted' }, 'Which save?'));
+    used.forEach(({ s, i }) => wrap.append(this.slotCard(i, s, [h('button', { class: 'btn small primary', onclick: () => open(s) }, 'Choose')])));
+    wrap.append(h('div', { class: 'btn-row' }, h('button', { class: 'btn', onclick: () => this.showTitle() }, 'Back')));
+    this.show(wrap);
+  }
+
+  /** "LEVEL 3 · ELECTRICAL STATION": a title card as each level starts, since there is no hub between them. */
+  levelCard(name: string, act: number, replay: boolean): void {
+    const [head, ...rest] = name.split(':');
+    const card = h('div', { class: 'level-card' }, h('small', {}, `${replay ? 'REPLAY · ' : ''}ACT ${act}`), h('b', {}, rest.length ? rest.join(':').trim() : head), rest.length ? h('em', {}, head.trim()) : null);
+    document.getElementById('app')!.append(card);
+    window.setTimeout(() => card.classList.add('out'), 3600);
+    window.setTimeout(() => card.remove(), 4600);
   }
 
   private async resume(s: SlotData): Promise<void> {
@@ -262,6 +291,7 @@ export class Ui {
       h('h2', {}, 'Paused'),
       h('div', { class: 'menu' },
         h('button', { class: 'btn primary', onclick: () => this.game.pause(false) }, 'Resume'),
+        this.game.currentSlot ? h('button', { class: 'btn', onclick: () => { const slot = this.game.currentSlot!; this.show(replayPanel(this.game, slot, () => this.showPause(true))); } }, 'Replay a Level') : null,
         h('button', { class: 'btn', onclick: () => this.settingsScreen('pause') }, 'Settings'),
         h('button', { class: 'btn', onclick: async () => { await this.game.autosave(); this.game.loop.paused = false; this.game.currentSlot = null; await this.game.showMenu(); } }, 'Exit to menu'))));
   }
@@ -344,7 +374,7 @@ export class Ui {
       });
     }
     // vitals / gear: rebuilt only when something visible changed
-    const key = [level.def.id, !!sim.plan.cold, sim.hungerEnabled, Math.round(st.health / 5), Math.round(st.sanity / 5), Math.round(st.hunger / 5), Math.round(st.thirst / 5), Math.round(sim.flash.battery), Math.round(sim.cam.battery / 5), sim.flash.on, sim.cam.nightVision, Math.round(st.breath / 5), Math.round(st.warmth / 5), inv.has('compass') ? Math.round(((-sim.player.yaw * 180) / Math.PI + 3600) % 360 / 15) : -1].join('|');
+    const key = [level.def.id, !!sim.plan.cold, sim.hungerEnabled, st.breath < 99, Math.round(st.health / 5), Math.round(st.sanity / 5), Math.round(st.hunger / 5), Math.round(st.thirst / 5), Math.round(sim.flash.battery), Math.round(sim.cam.battery / 5), sim.flash.on, sim.cam.nightVision, Math.round(st.breath / 5), Math.round(st.warmth / 5), inv.has('compass') ? Math.round(((-sim.player.yaw * 180) / Math.PI + 3600) % 360 / 15) : -1].join('|');
     if (key === this.hudKey) return;
     this.hudKey = key;
     const bar = (label: string, v: number) => [h('span', {}, label), h('div', { class: 'vb' + (v < 25 ? ' low' : '') }, h('i', { style: `width:${Math.round(v)}%` }))];

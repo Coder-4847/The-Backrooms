@@ -58,11 +58,11 @@ describe('visual assets', () => {
 
 describe('clue notes', () => {
   it('every playable level gets a few deterministic clues, placed inside their rooms', () => {
-    for (const def of LEVELS.filter((l) => !l.dev && l.id !== 'hub')) {
+    for (const def of LEVELS.filter((l) => !l.dev)) {
       const p = def.generate(7, { difficulty: 'normal' });
       const a = planClues(p), b = planClues(def.generate(7, { difficulty: 'normal' }));
       expect(JSON.stringify(a)).toBe(JSON.stringify(b));
-      if (p.hub || p.finale) continue;
+      if (p.finale) continue;
       expect(a.length, def.id).toBeGreaterThanOrEqual(1);
       expect(a.length).toBeLessThanOrEqual(8);
       for (const c of a) {
@@ -76,9 +76,9 @@ describe('clue notes', () => {
 
 describe('objectives and touch verbs', () => {
   it('every level has a route to the exit and a sensible first objective', () => {
-    for (const def of LEVELS.filter((l) => !l.dev && l.id !== 'hub')) {
+    for (const def of LEVELS.filter((l) => !l.dev)) {
       const p = def.generate(11, { difficulty: 'normal' });
-      if (p.hub || p.finale) continue;
+      if (p.finale) continue;
       const sim = new LevelSim(p, 'normal', { seed: 11 });
       const o = levelObjective(sim);
       expect(routeToExit(p, p.spawn.room), def.id).not.toBeNull();

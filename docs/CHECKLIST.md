@@ -12,7 +12,7 @@ Legend: **done** = built and verified by tests/tools; **partial** = built, with 
 | Clean, restrained, polished UI; settings complete and persistent; accessibility | **done / partial** | Settings schema, rebinding, persistence tested. Accessibility: captions, reduce flicker/shake/jump scares, colour-blind modes, text size, high contrast, hold/toggle. No screen-reader pass; no one-handed edit-layout mode (one-handed layout exists). |
 | No hitching during generation; loading short and atmospheric | **partial** | Chunk meshing and textures run in workers; the loading screen shows progress and tips. Not measured on real hardware. |
 | Local saves (3 slots, autosave, export/import) + global profile | **done** | Atomic writes, backup, migrations, export/import tested. |
-| Procedural Central Hub; replay any reached level; unreached sealed | **done** | 25 doors, three wings, 5 survivors, replay rules (capped loot). |
+| Straight-through campaign (no hub); replay any reached level from the menu; unreached levels stay hidden | **done** | New Game -> Level 0 -> next level automatically; Replay a Level in the title and pause menus (difficulty + seed, capped loot). |
 | Automatic checkpoint at every level completion + 2-3 waypoints per level | **done** | Covered by validators; hardcore has none. |
 | 5 difficulty tiers from one table, verified by tests | **done** | |
 | Every phase pushed and live on GitHub Pages; PWA offline-capable; README | **done** | Service worker with versioned cache verified on a production build. |

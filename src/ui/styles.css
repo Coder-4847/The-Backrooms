@@ -225,3 +225,11 @@ body.hiding #app::after { content: ''; position: absolute; inset: 0; pointer-eve
 .rewind { z-index: 60; }
 .touch-btn[data-slot='7'] { right: 224px; bottom: 54px; }
 .touch-btn[data-slot='5'] { font-size: 15px; letter-spacing: 0.08em; font-weight: 700; background: rgba(216, 194, 122, 0.55); color: #17130a; }
+/* level title card (there is no hub between levels) */
+.level-card { position: absolute; left: 0; right: 0; top: 30%; z-index: 30; display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; text-align: center; font-family: var(--mono); text-shadow: 0 0 12px #000; animation: level-card-in 1.2s ease-out both; transition: opacity 0.9s; }
+.level-card.out { opacity: 0; }
+.level-card small { letter-spacing: 0.5em; font-size: 0.75em; opacity: 0.7; }
+.level-card b { font-size: 2.1em; letter-spacing: 0.18em; text-transform: uppercase; font-weight: 600; }
+.level-card em { font-style: normal; letter-spacing: 0.3em; opacity: 0.55; font-size: 0.8em; }
+@keyframes level-card-in { from { opacity: 0; letter-spacing: 0.6em; filter: blur(6px); } to { opacity: 1; filter: blur(0); } }
+@media (max-height: 460px) { .level-card { top: 22%; } .level-card b { font-size: 1.5em; } }

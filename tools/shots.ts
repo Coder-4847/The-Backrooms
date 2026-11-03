@@ -17,7 +17,6 @@ try {
     await page.evaluate(async ({ level, tier, seed }) => {
       const g = (window as any).__game;
       g.settings.set('tier', tier);
-      if (level === 'hub') { await g.newGame(1, 'normal', 'SHOT'); const d = g.level.plan.hub.doors[0]; g.level.sim.player.place(d.pos.x + 6, 3, -Math.PI / 2 + 0.2); g.level.sim.player.god = true; return; }
       const id = level.replace(/\+.*/, '');
       await g.startLevel(id, seed, 'normal');
       const p = g.level.sim.player; const plan = g.level.plan;

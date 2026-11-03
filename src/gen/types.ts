@@ -35,16 +35,6 @@ export type ItemKind = 'key' | 'tool' | 'loot' | 'note';
 export interface ItemSpawn { id: string; item: string; kind: ItemKind; room: number; pos: Vec2; unlocks?: string }
 export interface Waypoint { room: number; pos: Vec2; /** 0..1 progress along the critical path. */ t: number }
 export interface EntitySlot { room: number; pos: Vec2; role: 'nest' | 'patrol' | 'ambush'; /** entity def id (levels with an ecology set it) */ entity?: string }
-export interface HubData {
-  /** Doors in campaign order; `yaw` is the direction a player faces to look at the door from the tunnel. */
-  doors: { index: number; room: number; pos: Vec2; yaw: number; side: 'N' | 'S' }[];
-  stations: { kind: 'stash' | 'noteboard' | 'bestiary' | 'gallery' | 'camcorder' | 'kitchen' | 'crafting'; room: number; pos: Vec2; yaw: number }[];
-  npcs: { id: string; pos: Vec2; yaw: number }[];
-  /** Wing gates: sealed until the act is reached. */
-  gates: { act: 2 | 3; box: { x0: number; z0: number; x1: number; z1: number } }[];
-  tunnelRoom: number;
-}
-
 /** A multi-part puzzle that opens `lock` when solved (spec 5.5: valves, fuses, rules). Parts must be reachable before the lock. */
 export interface PuzzleDef {
   id: string; kind: 'valves' | 'sequence' | 'breaker'; lock: string;
@@ -111,8 +101,6 @@ export interface LevelPlan {
   dark?: boolean;
   /** Offices: the badge question real coworkers answer correctly. */
   verify?: { question: string; answer: string; wrong: string };
-  /** Central Hub data (doors, stations, NPC spots); only present on the hub plan. */
-  hub?: HubData;
   entitySlots: EntitySlot[];
   nav: { nodes: NavNode[]; edges: NavEdge[] };
   /** Estimated minutes-of-play seconds for a competent player. */
@@ -148,9 +136,9 @@ export interface LevelDef {
   name: string;
   act: 0 | 1 | 2 | 3;
   tier: LevelPlan['tier'];
-  /** Dev-only levels (test room, placeholder) are excluded from the campaign and the hub. */
+  /** Dev-only levels (test room, placeholder) are excluded from the campaign and the replay menu. */
   dev?: boolean;
-  /** Door look/hint for the hub. */
+  /** Accent colour / icon for this level's door (menu accent). */
   door: { color: string; icon: string };
   /** Target traversal time window [min, max] seconds, checked by the validator. */
   targetSeconds: [number, number];

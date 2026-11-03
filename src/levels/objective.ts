@@ -8,8 +8,6 @@
  */
 import type { LevelPlan, Vec2 } from '../gen/types';
 import type { LevelSim } from './sim';
-import { CAMPAIGN } from './campaign';
-import type { HubState } from './hubObjects';
 
 export interface Objective { text: string; sub?: string; target: Vec2 | null; dist: number; key: string }
 
@@ -47,18 +45,6 @@ export function routeToExit(plan: LevelPlan, from: number): { conns: number[]; r
   return null;
 }
 
-export function hubObjective(plan: LevelPlan, hub: HubState): Objective {
-  const doors = plan.hub?.doors ?? [];
-  const idx = Math.min(hub.frontier, CAMPAIGN.length - 1);
-  const d = doors.find((q) => q.index === idx);
-  const name = CAMPAIGN[idx]?.name ?? 'the next level';
-  return {
-    text: hub.frontier === 0 ? 'Open the door in front of you to begin' : `Go through door ${idx + 1}: ${name}`,
-    sub: hub.frontier === 0 ? 'Talk to the survivors first if you want supplies' : undefined,
-    target: d ? d.pos : null, dist: 0, key: `hub:${idx}`,
-  };
-}
-
 export function levelObjective(sim: LevelSim): Objective {
   const plan = sim.plan;
   const route = routeToExit(plan, sim.room);
@@ -80,7 +66,7 @@ export function levelObjective(sim: LevelSim): Objective {
       return { text, sub: puzzle.hintNote ? 'The answer is written on a note somewhere on this level' : undefined, target: part.pos, dist, key: `lock:${lock}` };
     }
     const item = plan.items.find((i) => i.unlocks === lock && !sim.collected.has(i.id)) ?? plan.items.find((i) => i.kind === 'tool' && !sim.collected.has(i.id) && lock.startsWith(i.item));
-    return { text, sub: 'Search the rooms behind you', target: item ? item.pos : next(cid), dist, key: `lock:${lock}` };
+    return { text, sub: 'Explore the side rooms: it is somewhere off the main route', target: item ? item.pos : next(cid), dist, key: `lock:${lock}` };
   }
   if (sim.room === plan.exit.room || dist === 0) return { text: 'The exit is right here. Leave.', target: exitPos, dist, key: 'exit-here' };
   if (plan.finale) return { text: 'Face the Architect', target: exitPos, dist, key: 'finale' };

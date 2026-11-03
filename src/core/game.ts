@@ -181,7 +181,12 @@ export class Game implements Services {
   }
   newGame(slotNo: number, difficulty: DifficultyId, seedText: string, opts: { speedrun?: boolean; ngPlus?: boolean } = {}): Promise<void> { return this.flow.newGame(slotNo, difficulty, seedText, opts); }
   resumeSlot(slot: SlotData): Promise<void> { return this.flow.resume(slot); }
-  startFromHub(index: number, o: Parameters<Flow['startFromHub']>[1]): Promise<void> { return this.flow.startFromHub(index, o); }
+  /** Replay a reached level (also from the pause menu: the current run is autosaved first, then the game un-pauses into the replay). */
+  async startReplay(index: number, o: Parameters<Flow['startReplay']>[1]): Promise<void> {
+    this.ensureAudio();
+    if (this.state === 'paused') { await this.autosave(); this.loop.paused = false; }
+    await this.flow.startReplay(index, o);
+  }
   knownNotes(): string[] { return this.flow.knownNotes(); }
 
   /** Show the loading screen and tear down the current scene. */
@@ -226,7 +231,6 @@ export class Game implements Services {
     if (!this.currentSlot || !this.settings.value.autosave) return;
     const s = this.currentSlot;
     s.playtime += (performance.now() - this.runStart) / 1000; this.runStart = performance.now();
-    if (this.level && this.flow.inHub) { s.inventory = this.level.sim.inv.toState(); s.stats = this.level.sim.stats.toSave(this.level.sim.player.stamina); }
     await this.saves.saveSlot(s);
     bus.emit('save:written', { slot: s.slot });
   }

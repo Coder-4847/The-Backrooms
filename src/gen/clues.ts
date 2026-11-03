@@ -85,7 +85,7 @@ function spotIn(plan: LevelPlan, r: Room, rng: Rng): { x: number; y: number; z: 
 }
 
 export function planClues(plan: LevelPlan, max = 8): Clue[] {
-  if (plan.hub || plan.finale) return [];
+  if (plan.finale) return [];
   const rng = new Rng((plan.seed ^ 0x51c0de) >>> 0);
   const out: Clue[] = [];
   const used = new Set<number>();

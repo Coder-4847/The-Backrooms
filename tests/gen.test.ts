@@ -19,7 +19,7 @@ describe('level validators', () => {
       expect(r.failures.slice(0, 3)).toEqual([]);
     });
   }
-  it('the registry is the single table (hub/bot/validators read it)', () => {
+  it('the registry is the single table (replay menu/bot/validators read it)', () => {
     expect(levelById('placeholder')).toBeDefined(); expect(levelById('testroom')).toBeDefined(); expect(levelById('nope')).toBeUndefined();
     expect(campaignLevels().every((l) => !l.dev)).toBe(true);
   });

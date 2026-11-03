@@ -1,6 +1,6 @@
 /**
  * Crafting (spec 5.5): simple, discoverable recipes. A recipe is "discovered" the first time the
- * player holds all its ingredients; kitchen recipes need the hub kitchen. Pure and testable.
+ * player holds all its ingredients; cooking recipes need a checkpoint camp. Pure and testable.
  */
 import type { Inventory } from './inventory';
 
@@ -13,7 +13,7 @@ export const RECIPES: Recipe[] = [
   { id: 'purify', name: 'Purify water', in: { dirty_water: 1, purify_tablet: 1 }, out: { bottled_water: 1 }, hint: 'A tablet makes dirty water safe.' },
   { id: 'forge', name: 'Forge a hall pass', in: { paper: 1, marker_pen: 1 }, out: { forged_pass: 1 }, hint: 'Paper and a marker. Convincing at a glance.' },
   { id: 'medkit', name: 'Field dressing', in: { bandage: 1, rag: 1 }, out: { bandage: 2 }, hint: 'Clean the rag, cut it up: one bandage becomes two.' },
-  { id: 'meal', name: 'Cook a meal', in: { canned_food: 1, can_opener: 1 }, out: { cooked_meal: 1, can_opener: 1 }, station: 'kitchen', hint: 'Best value food. Needs the hub kitchen.' },
+  { id: 'meal', name: 'Cook a meal', in: { canned_food: 1, can_opener: 1 }, out: { cooked_meal: 1, can_opener: 1 }, station: 'kitchen', hint: 'Best value food. Cook it at a checkpoint camp.' },
   { id: 'stew', name: 'Hot almond stew', in: { canned_food: 1, almond_water: 1 }, out: { cooked_meal: 2 }, station: 'kitchen', hint: 'Almond water in the pot stretches a can into two meals.' },
 ];
 

@@ -4,7 +4,7 @@ A single-player, procedurally generated, found-footage Backrooms survival horror
 (TypeScript + Three.js, WebGL2). Everything (levels, textures, audio, entities) is generated in code from a seed.
 
 **Status: complete (Phases 0-5).** 25 levels, six endings, New Game+, speedrun mode, ending gallery, bestiary and achievements. See `docs/CHECKLIST.md` for what is verified and what still needs real-device testing. Engine, tooling, saves, input, audio and render pipeline (Phase 0); core survival systems, Level 0 and the
-procedural Central Hub (Phase 1); Levels 1-5 and the Schoolhouse with new entities, puzzles, crafting and a companion (Phase 2); eight Act 2 levels with water and breath, darkness, light sections and eight more entities (Phase 3); ten Act 3 levels with the chase and the finale (Phase 4).
+a campaign that runs straight from New Game through every level, with any level you have reached replayable from the menu (Phase 1); Levels 1-5 and the Schoolhouse with new entities, puzzles, crafting and a companion (Phase 2); eight Act 2 levels with water and breath, darkness, light sections and eight more entities (Phase 3); ten Act 3 levels with the chase and the finale (Phase 4).
 Later phases are in `docs/MASTER.md`.
 
 ## Play

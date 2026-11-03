@@ -50,7 +50,6 @@ export function registerDebugCommands(game: Game): void {
   r.register({ name: 'intensity', help: 'intensity <0-1.5> : force the Director intensity', run: (a, api) => { const l = lv(); if (!l) return api.print('no level'); l.sim.intensity = Number(a[0] ?? 0.5); l.sim.director = new Director(l.sim.diff, l.sim.intensity, new Rng(1)); l.sim['ctx'].director = l.sim.director; api.print(`intensity ${l.sim.intensity}`); } });
   r.register({ name: 'die', help: 'kill the player (tests death/respawn)', run: () => { const l = lv(); if (l) { l.sim.player.god = false; l.sim.stats.damage(1000, l.sim.diff); } } });
   r.register({ name: 'win', help: 'complete the current level', run: () => { void game.flow.completeLevel(); } });
-  r.register({ name: 'hub', help: 'go to the Central Hub (needs a campaign slot)', run: async (_a, api) => { if (!game.currentSlot) return api.print('start a New Game first'); await game.flow.enterHub(); } });
   r.register({ name: 'unlock', help: 'unlock <n> : set the campaign frontier (door index)', run: (a, api) => { const s = game.currentSlot; if (!s) return api.print('no slot'); s.frontier = Math.max(0, Math.min(24, Number(a[0] ?? 0))); api.print(`frontier ${s.frontier}`); } });
   r.register({ name: 'director', help: 'show Director phase/tension', run: (_a, api) => { const l = lv(); if (l) api.print(`${l.sim.director.phase} tension ${l.sim.director.tension.toFixed(2)} hunts ${l.sim.director.huntsStarted}`); } });
   for (const f of FUTURE_COMMANDS) r.register({ name: f.name, help: f.help, phase: f.phase, run: () => {} });

@@ -1,4 +1,4 @@
-/** Menu/hub panels for Phase 5: ending gallery, bestiary, achievements, how to play, credits, camcorder station. */
+/** Menu panels: ending gallery, bestiary, achievements, how to play, credits, camcorder lenses. */
 import { h } from './dom';
 import { ENDING_TEXT, type EndingId } from '../story/endings';
 import { ACHIEVEMENTS } from '../story/achievements';

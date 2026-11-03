@@ -6,11 +6,12 @@
 import type { KV } from './storage';
 import type { DifficultyId } from './difficulty';
 
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 3;
 export const PROFILE_VERSION = 1;
 export const SLOT_COUNT = 3;
 
-export interface InventoryState { hotbar: (string | null)[]; backpack: { id: string; n: number }[]; stash: { id: string; n: number }[] }
+/** `stash` only exists in saves from before the hub was removed; loading folds it into the backpack. */
+export interface InventoryState { hotbar: (string | null)[]; backpack: { id: string; n: number }[]; stash?: { id: string; n: number }[] }
 export interface PlayerStats { health: number; stamina: number; sanity: number; hunger: number; thirst: number }
 
 export interface SlotData {
@@ -20,7 +21,7 @@ export interface SlotData {
   difficulty: DifficultyId;
   runSeed: string;
   levelSeeds: Record<string, number>;
-  /** Furthest campaign level index reached (0-based). Levels beyond are sealed in the hub. */
+  /** Furthest campaign level index reached (0-based). Levels up to this one can be replayed from the menu. */
   frontier: number;
   completed: Record<string, { bestTime: number; difficulty: DifficultyId }>;
   /** Last checkpoint snapshot (level id + waypoint index + stats at that moment). */
@@ -60,7 +61,7 @@ export interface Profile {
   lastBenchmarkTier: string | null;
 }
 
-export function newInventory(): InventoryState { return { hotbar: [null, null, null, null], backpack: [], stash: [] }; }
+export function newInventory(): InventoryState { return { hotbar: [null, null, null, null], backpack: [] }; }
 export function newStats(): PlayerStats { return { health: 100, stamina: 100, sanity: 100, hunger: 100, thirst: 100 }; }
 
 export function newSlot(slot: number, difficulty: DifficultyId, runSeed: string, now = Date.now()): SlotData {
@@ -82,6 +83,11 @@ export function newProfile(): Profile {
 const SLOT_MIGRATIONS: Record<number, (d: any) => any> = {
   // v1 -> v2: added manualSavesThisLevel + thumbnail
   1: (d) => ({ ...d, version: 2, manualSavesThisLevel: d.manualSavesThisLevel ?? 0, thumbnail: d.thumbnail ?? null }),
+  // v2 -> v3: the hub (and its stash lockers) was removed: stashed items join the backpack
+  2: (d) => {
+    const fold = (inv: any) => (inv ? { ...inv, backpack: [...(inv.backpack ?? []), ...(inv.stash ?? [])], stash: [] } : inv);
+    return { ...d, version: 3, inventory: fold(d.inventory), checkpoint: d.checkpoint ? { ...d.checkpoint, inventory: fold(d.checkpoint.inventory) } : d.checkpoint };
+  },
 };
 const PROFILE_MIGRATIONS: Record<number, (d: any) => any> = {};
 
@@ -174,7 +180,7 @@ export class SaveManager {
 
   // ---- gameplay-facing helpers (pure state transitions) ----
 
-  /** Level completion: record best time, advance the frontier, unlock the next hub door. */
+  /** Level completion: record best time and advance the frontier (the furthest level reached, which can be replayed). */
   static completeLevel(s: SlotData, levelIndex: number, levelId: string, time: number, totalLevels: number): void {
     const prev = s.completed[levelId];
     if (!prev || time < prev.bestTime) s.completed[levelId] = { bestTime: time, difficulty: s.difficulty };

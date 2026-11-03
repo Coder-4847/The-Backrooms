@@ -1,4 +1,4 @@
-/** `npm run smoke` : end-to-end browser check of menus, settings, saves, hub, Level 0, death, completion. */
+/** `npm run smoke` : end-to-end browser check of menus, settings, saves, Level 0 (straight from New Game), death, level-to-level flow, replay menu, completion. */
 import { launch, startServer, openGame } from './browser';
 
 const { url, proc } = await startServer();
@@ -24,31 +24,16 @@ try {
 
   await page.click('text=New Game'); await page.click('.chip:has-text("Normal")'); await page.fill('input[type=text]', 'SMOKE-1'); await page.click('text=Begin');
   await waitState('playing');
-  check('new game lands in the Central Hub', await ev(() => (window as any).__game.flow.inHub === true));
-  const hub = await ev(() => { const p = (window as any).__game.level.plan; return { doors: p.hub.doors.length, npcs: p.hub.npcs.length, stations: p.hub.stations.length }; });
-  check('hub has doors, 3 survivors, stations', hub.doors >= 4 && hub.npcs === 5 && hub.stations >= 7, JSON.stringify(hub));
+  check('new game drops straight into Level 0 (no hub)', await ev(() => { const g = (window as any).__game; return g.level.def.id === 'level0' && g.flow.run.mode === 'campaign' && g.flow.run.index === 0; }));
   check('starter inventory (flashlight, camcorder)', await ev(() => { const i = (window as any).__game.level.sim.inv; return i.has('flashlight') && i.has('camcorder'); }));
-
-  // talk to Marlow and take the battery
-  await ev(() => { const g = (window as any).__game; const n = g.level.plan.hub.npcs[0]; g.level.sim.player.place(n.pos.x + 1.2, n.pos.z); });
-  await page.keyboard.press('KeyE'); await page.waitForSelector('.dialogue');
-  await page.click('text=I will take that battery.'); await page.waitForTimeout(300);
-  check('dialogue gives an item', await ev(() => (window as any).__game.level.sim.inv.count('battery')) === 2);
-  await page.keyboard.press('Escape'); await panelClosed();
+  await ev(() => { (window as any).__game.level.sim.director.update = () => null; });
 
   // inventory panel
   await page.keyboard.press('KeyI'); await page.waitForSelector('.inv-grid');
   check('inventory panel opens with stacks', (await page.locator('.stack').count()) >= 3);
   await page.keyboard.press('KeyI'); await panelClosed();
 
-  // open the Level 0 door and step through
-  await ev(() => { const g = (window as any).__game; const d = g.level.plan.hub.doors[0]; g.level.sim.player.place(d.pos.x, d.side === 'N' ? -0.4 : 6.4); g.level.sim.player.yaw = 0; });
-  await page.keyboard.press('KeyE');
-  await page.waitForSelector('text=Step through', { timeout: 15000 }).catch(async () => { console.log('DEBUG', JSON.stringify(await ev(() => { const g = (window as any).__game; return { panel: g.ui.panelOpen, it: g.level.sim.interactables().map((i: any) => i.label), pos: [g.level.sim.player.x, g.level.sim.player.z], state: g.state, html: document.querySelector('#ui')?.innerHTML.slice(0, 150) }; }))); });
-  await page.waitForSelector('text=Step through');
-  await page.click('text=Step through');
-  await waitState('playing');
-  check('Level 0 loads from the door', await ev(() => (window as any).__game.level.def.id) === 'level0');
+  check('Level 0 is the first level', await ev(() => (window as any).__game.level.def.id) === 'level0');
   const l0 = await ev(() => { const L = (window as any).__game.level; return { rooms: L.plan.rooms.length, ents: L.sim.ew.entities.length, hides: L.plan.hides.length, tier: (window as any).__game.tier().id }; });
   check('Level 0 has rooms, entities, lockers', l0.rooms > 30 && l0.ents >= 3 && l0.hides > 5, JSON.stringify(l0));
 
@@ -79,18 +64,15 @@ try {
   check('notes open a reader', true);
   await page.keyboard.press('Escape'); await panelClosed();
 
-  // finish the level: walk to the exit marker and interact -> back to the hub with the frontier advanced
+  // finish the level: walk to the exit marker and interact -> the next level starts straight away, frontier advanced
   await ev(() => { const g = (window as any).__game; const L = g.level; L.sim.ew.entities.length = 0; L.sim.player.god = true; L.teleport(L.plan.exit.pos.x - 1.2, L.plan.exit.pos.z); });
   await page.keyboard.press('KeyE');
-  await page.waitForFunction(() => (window as any).__game.flow.inHub === true && (window as any).__game.state === 'playing', null, { timeout: 120000 });
+  await page.waitForFunction(() => { const g = (window as any).__game; return g.state === 'playing' && g.level && g.level.def.id === 'level1'; }, null, { timeout: 180000 });
   const slot = await ev(async () => { const s = await (window as any).__game.saves.loadSlot(1); return { frontier: s.frontier, done: Object.keys(s.completed) }; });
-  check('level completion saved and unlocked the next door', slot.frontier === 1 && slot.done.includes('level0'), JSON.stringify(slot));
+  check('finishing Level 0 rolled straight into Level 1 and saved', slot.frontier === 1 && slot.done.includes('level0'), JSON.stringify(slot));
   check('journal found notes are kept', (await ev(() => (window as any).__game.knownNotes().length)) >= 1);
-  // ---- Act 1: Level 1 is now open (frontier 1): enter it from the hub, recruit Pim, craft, throw ----
-  await ev(() => { const g = (window as any).__game; const d = g.level.plan.hub.doors[1]; g.level.sim.player.place(d.pos.x, d.side === 'N' ? -0.4 : 6.4); });
-  await page.keyboard.press('KeyE'); await page.waitForSelector('text=Step through');
-  check('door panel offers Level 1 (continue)', (await page.locator('h2').first().innerText()).includes('Habitable'));
-  await page.click('text=Step through'); await waitState('playing');
+  check('the level title card shows', (await page.locator('.level-card').count()) >= 1);
+  // ---- Act 1: Level 1 started by itself (frontier 1): recruit Pim, craft, throw ----
   const l1 = await ev(() => { const L = (window as any).__game.level; return { id: L.def.id, props: L.plan.props.length, ents: L.sim.ew.entities.map((e: any) => e.def.id) }; });
   check('Level 1 loads with props, hounds and Pim', l1.id === 'level1' && l1.props > 20 && l1.ents.includes('hound') && l1.ents.includes('companion'), JSON.stringify({ ...l1, ents: [...new Set(l1.ents)] }));
   await ev(() => { const L = (window as any).__game.level; L.sim.director.update = () => null; L.sim.ew.entities = L.sim.ew.entities.filter((e: any) => e.def.id === 'companion'); const pim = L.sim.ew.entities[0]; L.sim.player.place(pim.x + 1.2, pim.z); });
@@ -111,8 +93,9 @@ try {
   const l7 = await startL('level7');
   check('Level 7 has water and a Leviathan', l7.id === 'level7' && l7.water > 3 && l7.ents.includes('leviathan'));
   await ev(() => { const g = (window as any).__game; const L = g.level; L.sim.ew.entities.length = 0; const w = L.plan.water.find((q: any) => q.depth === 'flooded'); const r = L.plan.rooms[w.room]; L.sim.player.god = false; L.sim.player.place(r.x + r.w / 2, r.z + r.d / 2); });
-  await page.waitForTimeout(2500);
-  check('diving drains breath and the AIR bar appears', await ev(() => (window as any).__game.level.sim.stats.breath) < 99 && (await page.locator('.vitals').innerText()).includes('AIR'));
+  await page.waitForFunction(() => (window as any).__game.level.sim.stats.breath < 99, null, { timeout: 40000 }).catch(() => {});
+  await page.waitForTimeout(400);
+  check('diving drains breath and the AIR bar appears', (await ev(() => (window as any).__game.level.sim.stats.breath)) < 99 && (await page.locator('.vitals').innerText()).includes('AIR'), JSON.stringify(await ev(() => { const L = (window as any).__game.level; return { breath: L.sim.stats.breath, dead: L.sim.dead, water: L.sim.waterHere, t: L.sim.time, vit: document.querySelector('.vitals')?.textContent, hp: L.sim.stats.health }; })));
   const l4 = await startL('garage');
   check('Garage has unlit sections, breakers and Smilers', l4.id === 'garage' && l4.ents.includes('smiler'));
   await ev(() => { const g = (window as any).__game; const L = g.level; L.sim.ew.entities.length = 0; const pz = L.plan.puzzles[0]; const pt = pz.parts[0]; L.sim.player.place(pt.pos.x + 0.9, pt.pos.z); });
@@ -145,6 +128,24 @@ try {
   check('achievements list shows unlocked ones', (await page.locator('.row-label:has-text("✓")').count()) >= 2);
   await page.click('button:text-is("Back")'); await page.waitForSelector('.title');
   await page.click('text=How to Play'); await page.waitForSelector('.howto'); await page.click('button:text-is("Back")'); await page.waitForSelector('.title');
+  // Replay a Level: lists exactly the levels this save has reached, and starting one runs it as a replay
+  await page.click('text=Replay a Level'); await page.waitForSelector('.replay');
+  const reached = await page.locator('.replay .row').count();
+  check('Replay a Level lists the levels reached in the save (Level 0 and Level 1)', reached === 2, `rows ${reached}`);
+  await page.locator('.replay .row:has-text("Level 0") button').click(); await page.waitForSelector('text=A fresh run of this level');
+  await page.click('.chip:has-text("Easy")'); await page.click('button:text-is("Start")'); await waitState('playing');
+  check('replay starts that level in replay mode on the chosen difficulty', await ev(() => { const g = (window as any).__game; return g.level.def.id === 'level0' && g.flow.run.mode === 'replay' && g.flow.run.difficulty === 'easy'; }));
+  check('a replay leaves the campaign frontier alone', await ev(async () => (await (window as any).__game.saves.loadSlot(1)).frontier) === 1);
+  await ev(() => (window as any).__game.showMenu()); await page.waitForSelector('.title', { timeout: 60000 });
+  // Continue picks the save up at the level it had reached (no hub), and the pause menu can start a replay too
+  await page.click('text=Continue'); await page.waitForSelector('.slot:not(.empty)'); await page.click('.slot:not(.empty) button:has-text("Play")'); await waitState('playing');
+  check('Continue resumes the campaign at the furthest level reached', await ev(() => { const g = (window as any).__game; return g.level.def.id === 'level1' && g.flow.run.mode === 'campaign'; }));
+  await ev(() => { (window as any).__game.level.sim.director.update = () => null; });
+  await page.keyboard.press('Escape'); await page.waitForSelector('text=Paused');
+  await page.click('text=Replay a Level'); await page.waitForSelector('.replay');
+  await page.locator('.replay .row:has-text("Level 0") button').click(); await page.click('button:text-is("Start")'); await waitState('playing');
+  check('the pause menu can start a replay (and the game un-pauses)', await ev(() => { const g = (window as any).__game; return g.level.def.id === 'level0' && g.flow.run.mode === 'replay' && g.loop.paused === false; }));
+  await ev(() => (window as any).__game.showMenu()); await page.waitForSelector('.title', { timeout: 60000 });
   check('New Game+ is unlocked after an ending', await page.locator('text=New Game+').count() > 0);
   check('no page errors', errors.length === 0, errors.slice(0, 3).join(' | '));
 } finally { await browser.close(); proc.kill(); }

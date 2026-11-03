@@ -13,11 +13,10 @@ import { LevelSim, type SimEvent, type SimOptions, type SimSnapshot } from './si
 import { EntityVisuals } from './entityVisuals';
 import { buildBody, buildStick, type Body } from '../entities/body';
 import { planClues, type Clue } from '../gen/clues';
-import { bearingWords, hubObjective, levelObjective, type Objective } from './objective';
+import { bearingWords, levelObjective, type Objective } from './objective';
 import { Jumpscare } from './scare';
 import { buildClues, loadHandFont, type ClueVisuals } from './clueArt';
 import { SceneFx } from './fx';
-import { buildHubObjects, hubInteractables, type HubState } from './hubObjects';
 import { buildTestProps, type PropSet } from './props';
 import { ChunkStreamer } from '../gen/chunks';
 import { type ChunkData, type MatKey, type LightDef, LAMP_W, LAMP_D, levelLights } from '../gen/mesher';
@@ -100,7 +99,6 @@ export class LevelScene {
   private ambient!: AmbientLight;
   private ambientBase = 0.4;
   private dyn: PointLight[] = [];
-  private hubObj: ReturnType<typeof buildHubObjects> | null = null;
   private surface: SurfaceShared = createSurfaceShared();
   private bakeLamps: LightDef[] = [];
   private viewmodel: Viewmodel | null = null;
@@ -117,7 +115,7 @@ export class LevelScene {
   private clueVis: ClueVisuals | null = null;
 
   constructor(private svc: Services, readonly def: LevelDef, readonly seed: number, readonly difficulty: DifficultyId = 'normal', private tierOverride?: TierDef,
-    private opts: { hub?: HubState; sim?: SimOptions; snapshot?: SimSnapshot; genParams?: Record<string, unknown> } = {}) {}
+    private opts: { sim?: SimOptions; snapshot?: SimSnapshot; genParams?: Record<string, unknown> } = {}) {}
 
   get tier(): TierDef { return this.tierOverride ?? this.svc.tier(); }
 
@@ -128,7 +126,6 @@ export class LevelScene {
     this.plan = def.generate(this.seed, { difficulty: this.difficulty, ...this.opts.genParams });
     this.sim = new LevelSim(this.plan, this.difficulty, { seed: this.seed, intensity: def.intensity, scare: st.scare, hungerEnabled: st.hunger, ...this.opts.sim });
     if (this.opts.snapshot) this.sim.applySnapshot(this.opts.snapshot);
-    if (this.plan.hub) { this.sim.alwaysSafe = true; this.sim.extra = () => hubInteractables(this.plan, this.opts.hub!); }
     const planId = await svc.pool.setPlan(this.plan);
 
     progress(0.1, 'Synthesizing materials');
@@ -361,10 +358,6 @@ export class LevelScene {
       const prev = sim.extra, vis = this.clueVis;
       sim.extra = () => [...(prev?.() ?? []), ...this.clues.map((c) => ({ kind: 'custom' as const, x: c.x, z: c.z, label: 'Read the scrap of paper', ref: { type: 'clue', id: c.id, text: c.text, img: () => vis.image(c.id) } }))];
     }
-    if (plan.hub) {
-      this.hubObj = buildHubObjects(scene, plan, this.opts.hub!);
-      sim.world.add('hubobjs', this.hubObj.colliders);
-    }
     const doorGeo = new BoxGeometry(1, 2.2, 0.16);
     const doorMats: Record<string, MeshStandardMaterial> = {
       key: new MeshStandardMaterial({ color: 0x5a1f1a, roughness: 0.6, metalness: 0.3 }), fuse: new MeshStandardMaterial({ color: 0x1f3a5a, roughness: 0.5, metalness: 0.5, emissive: new Color(0x081428) }),
@@ -396,7 +389,6 @@ export class LevelScene {
       if (a && s) this.humHandles.push(s.beacon(a.spatial(w.pos.x, 1.3, w.pos.z, 'ambience', 0, 0.5)));
     });
     // exit marker: Level 0's "wrong wall" is a slab that hums a half-step flat
-    if (plan.hub) return;
     const exitG = new BoxGeometry(1.5, 2.3, 0.08);
     const exitM = new MeshBasicMaterial({ color: new Color(0x9fe8ff).multiplyScalar(2.5) });
     this.extras.push(exitG, exitM);
@@ -509,9 +501,8 @@ export class LevelScene {
 
   private updateObjective(): void {
     const sim = this.sim, p = sim.player;
-    const o = this.plan.hub ? hubObjective(this.plan, this.opts.hub!) : levelObjective(sim);
+    const o = levelObjective(sim);
     this.objective = o;
-    if (this.plan.hub) { this.objectiveHint = null; return; }
     const loot = sim.collected.size + sim.notes.size + sim.keys.size;
     if (o.key !== this.objKey) { this.objKey = o.key; this.objBestDist = o.dist; this.objProgressAt = sim.time; }
     else if (o.dist < this.objBestDist || loot !== this.objLoot) { this.objBestDist = Math.min(o.dist, this.objBestDist); this.objProgressAt = sim.time; }
@@ -551,7 +542,6 @@ export class LevelScene {
     this.viewmodel?.update(dt, hasFlash && !this.sim.hidden, flashOut, p.yaw, p.pitch, Math.min(1, p.speed / 3), this.time);
     this.ev.sync(this.sim.ew, this.time, dt);
     this.fx.update(dt, cam, flashOut > 0.4);
-    this.hubObj?.update(this.time, p.x, p.z);
     // blizzard gusts (Arctic) thicken the fog; wrong portraits follow your position with their gaze
     if (this.plan.cold && this.scene.fog) { const gust = 0.5 + 0.5 * Math.sin(this.time * 0.25) * Math.sin(this.time * 0.11 + 1); (this.scene.fog as FogExp2).density = this.fogBase.density * (1 + gust * 1.6); }
     for (const pm of this.portraitMeshes) if (pm.wrong) pm.mesh.rotation.y = pm.yaw + Math.PI + Math.max(-0.5, Math.min(0.5, Math.atan2(p.x - pm.mesh.position.x, p.z - pm.mesh.position.z) - pm.yaw)) * 0.4 * Math.sin(this.time * 0.7);
@@ -633,7 +623,7 @@ export class LevelScene {
   dispose(): void {
     document.body.classList.remove('hiding');
     if (this.scare) { this.scare.onDone = null; this.svc.gfx.fovKick = 0; }
-    this.ev.dispose(); this.hubObj?.dispose(); this.viewmodel?.dispose();
+    this.ev.dispose(); this.viewmodel?.dispose();
     this.warm.forEach((b) => b.dispose()); this.warm = [];
     this.clueVis?.dispose();
     for (const h of this.humHandles) h.stop(0.3);

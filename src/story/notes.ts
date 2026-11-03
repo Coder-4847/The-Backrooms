@@ -88,9 +88,6 @@ export const NOTES: Record<string, NoteDef> = Object.fromEntries([
   N({ id: 'anchor_hint5', level: 'wheatfield', title: "Carved into a fence post", kind: 'graffiti', text: "WALK TO THE EDGE OF THE FIELD WHERE THE WHEAT STOPS. THERE IS A CHAIR LEG THERE. IT IS NOT FOR SITTING." }),
   N({ id: 'l0_secret', level: 'level0', title: "Under the first note, in pencil", kind: 'graffiti', text: "(very small) If you ever need the hum to forget you: sit in the first room, lights off, crouched, and hold your breath until it skips." }),
   N({ id: 'fn_anchors', level: 'finale', title: "Architect's second card", kind: 'note', text: "If you have collected five small things that were never mine, lay them on my table. They are the only part of this place I did not draw." }),
-  N({ id: 'hub_board1', level: 'hub', title: 'Notice board: supply policy', kind: 'poster', text: 'ALMOND OUTPOST SUPPLY POLICY\nTake what you need. Leave what you do not. If you find a battery, you did not find it; the Outpost did.\n— M.V.' }),
-  N({ id: 'hub_board2', level: 'hub', title: 'Notice board: Ines', kind: 'poster', text: 'The radio picks up a rhythm every eleven minutes. If anyone hears it in person, tell me before you tell anyone else.' }),
-  N({ id: 'hub_tape', level: 'hub', title: 'Tape 00, unlabeled', kind: 'tape', text: '[static] ...whoever carries this camera, we left the seventh chair empty on purpose. Please sit down when you are ready. [static]' }),
 ]);
 
 /** Notes scattered randomly by level dressing (the Anchor hints and the secret hint are placed deliberately instead). */

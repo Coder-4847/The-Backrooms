@@ -83,7 +83,7 @@ describe('save system', () => {
   it('manual save rules per difficulty', () => {
     const s = newSlot(1, 'nightmare', 'A');
     expect(SaveManager.canManualSave(s, 'unlimited', 99, true)).toBe(true);
-    expect(SaveManager.canManualSave(s, 'unlimited', 99, false)).toBe(false); // only at waypoints / hub
+    expect(SaveManager.canManualSave(s, 'unlimited', 99, false)).toBe(false); // only at waypoints
     expect(SaveManager.canManualSave(s, 'none', 0, true)).toBe(false);
     s.manualSavesThisLevel = 2;
     expect(SaveManager.canManualSave(s, 'limitedPerLevel', 2, true)).toBe(false);

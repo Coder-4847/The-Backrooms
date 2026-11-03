@@ -1,11 +1,11 @@
 /**
- * Flow: the campaign loop around levels (spec 5.7-5.8, 5.11). Hub <-> level transitions, checkpoint
- * and level-complete autosaves, death with difficulty penalties (rewind + reload from the last
- * checkpoint, Hardcore permadeath), replays with capped loot carry-back, hub interactions.
+ * Flow: the campaign loop around levels (spec 5.7-5.8). New Game starts Level 0 directly and every
+ * completed level rolls straight into the next one (autosave at each). Any level you have reached can be
+ * replayed from the menu. Checkpoint and level-complete autosaves, death with difficulty penalties (rewind
+ * + reload from the last checkpoint, Hardcore permadeath), replays with capped loot carry-back.
  */
 import { LevelScene } from '../levels/scene';
-import { levelById, CAMPAIGN, isImplemented } from '../levels/registry';
-import { hubDef } from '../levels/hub';
+import { levelById, CAMPAIGN, isImplemented, reachedLevelIndexes } from '../levels/registry';
 import { Inventory, applyDeathPenalty } from '../systems/inventory';
 import { itemDef } from '../systems/items';
 import { Stats } from '../systems/stats';
@@ -16,10 +16,8 @@ import { bus } from './events';
 import { h } from '../ui/dom';
 import { BASE_STATE, ENDING_TEXT, resolveEnding, type EndingState } from '../story/endings';
 import { checkAchievements, unlocksFor } from '../story/achievements';
-import { bestiaryPanel, camcorderPanel, endingGalleryPanel } from '../ui/panels2';
-import { craftPanel, dialoguePanel, finalePanel, doorPanel, inventoryPanel, journalPanel, notePanel, stashPanel, talkPanel } from '../ui/panels';
+import { finalePanel, inventoryPanel, journalPanel, notePanel, talkPanel } from '../ui/panels';
 import { NOTES } from '../story/notes';
-import type { HubRef, HubState } from '../levels/hubObjects';
 import type { SimSnapshot } from '../levels/sim';
 import type { Game } from './game';
 
@@ -28,15 +26,11 @@ const REPLAY_LOOT_CAP = 6;
 
 export class Flow {
   run: RunInfo | null = null;
-  inHub = false;
+  /** Replays keep their checkpoint in memory only, so they never overwrite the campaign checkpoint in the save. */
+  private replayCheckpoint: { waypoint: number; inventory: Inventory; stats: Stats; sim: SimSnapshot } | null = null;
   constructor(private g: Game) {}
 
   get slot(): SlotData | null { return this.g.currentSlot; }
-
-  hubState(): HubState {
-    const s = this.slot;
-    return { frontier: s?.frontier ?? 0, completed: s?.completed ?? {} };
-  }
 
   knownNotes(): string[] {
     const ids = new Set<string>([...(this.slot?.notesFound ?? []), ...this.g.profile.journal, ...(this.g.level?.sim.notes ?? [])]);
@@ -53,7 +47,7 @@ export class Flow {
     slot.inventory = Inventory.starter().toState();
     this.g.currentSlot = slot;
     await this.g.saves.saveSlot(slot);
-    await this.enterHub();
+    await this.startFrontier(slot);
   }
 
   async resume(slot: SlotData): Promise<void> {
@@ -61,41 +55,36 @@ export class Flow {
     const cp = slot.checkpoint;
     if (cp && cp.sim && isImplemented(cp.levelId)) {
       await this.startLevel(cp.levelId, cp.seed ?? slot.runSeed, cp.difficulty ?? slot.difficulty, { mode: cp.mode ?? 'campaign', index: cp.index ?? 0, snapshot: cp.sim as SimSnapshot, inv: Inventory.fromState(cp.inventory), stats: Stats.from(cp.stats), deaths: cp.deaths ?? 0 });
-    } else await this.enterHub();
+    } else await this.startFrontier(slot);
   }
 
-  // ---- hub ----
-
-  async enterHub(arrivedIndex?: number): Promise<void> {
-    const g = this.g, slot = this.slot;
-    if (!slot) return;
-    g.beginLoad('The Central Hub');
-    this.inHub = true; this.run = null;
-    const state = this.hubState();
-    const inv = Inventory.fromState(slot.inventory);
-    const scene = new LevelScene(g, hubDef, deriveSeed(parseSeed(slot.runSeed), 'hub'), slot.difficulty, undefined, {
-      hub: state, genParams: { frontier: state.frontier },
-      sim: { inventory: inv, stats: Stats.from(slot.stats), spawnEntities: false, hungerEnabled: g.settings.value.hunger },
-    });
-    await scene.load((p, label) => g.ui.setLoading(true, 'The Central Hub', p, label));
-    const idx = arrivedIndex ?? Math.min(state.frontier, CAMPAIGN.length - 1);
-    const door = scene.plan.hub!.doors.find((d) => d.index === idx);
-    // arrive at the mouth of the alcove, facing the door and already within reach of it (the Open prompt is up on arrival)
-    if (door) scene.sim.player.place(door.pos.x, door.side === 'N' ? -0.35 : 6.35, door.side === 'N' ? 0 : Math.PI);
-    this.wire(scene);
-    g.finishLoad(scene);
-    await g.saves.saveSlot(slot); // autosave on entering the hub
-    bus.emit('save:written', { slot: slot.slot });
-  }
-
-  async startFromHub(index: number, o: { mode: 'campaign' | 'replay'; difficulty: DifficultyId; seed?: string }): Promise<void> {
-    const slot = this.slot, g = this.g;
-    if (!slot || !g.level) return;
-    slot.inventory = g.level.sim.inv.toState(); slot.stats = g.level.sim.stats.toSave(g.level.sim.player.stamina);
+  /**
+   * Campaign: start the level at the frontier (the furthest one reached) from the slot's carried inventory and
+   * stats. `recover` gives a little health and sanity back between levels (you step through a door, not a medic).
+   */
+  private async startFrontier(slot: SlotData, recover = false): Promise<void> {
+    const index = Math.max(0, Math.min(slot.frontier, CAMPAIGN.length - 1));
     const e = CAMPAIGN[index];
-    const seed = o.mode === 'campaign' ? slot.runSeed : o.seed ?? randomSeedString();
-    if (o.mode === 'campaign') slot.levelSeeds[e.id] = deriveSeed(parseSeed(seed), `level:${e.id}`);
-    await this.startLevel(e.id, seed, o.difficulty, { mode: o.mode, index, inv: Inventory.fromState(slot.inventory), stats: Stats.from(slot.stats), deaths: 0 });
+    if (!isImplemented(e.id)) { await this.g.showMenu(); return; }
+    const stats = Stats.from(slot.stats);
+    if (recover) { stats.health = Math.min(100, stats.health + 35); stats.sanity = Math.min(100, stats.sanity + 30); }
+    slot.levelSeeds[e.id] = deriveSeed(parseSeed(slot.runSeed), `level:${e.id}`);
+    this.replayCheckpoint = null;
+    await this.startLevel(e.id, slot.runSeed, slot.difficulty, { mode: 'campaign', index, inv: Inventory.fromState(slot.inventory), stats, deaths: 0 });
+  }
+
+  /** Levels you may replay in this save: every campaign level up to the furthest one reached. */
+  reachedLevels(slot: SlotData | null = this.slot): number[] {
+    return slot ? reachedLevelIndexes(slot.frontier) : [];
+  }
+
+  /** Replay a level you have reached (difficulty + seed of your choice). Story progress is untouched; death never ends the run. */
+  async startReplay(index: number, o: { difficulty: DifficultyId; seed?: string }): Promise<void> {
+    const slot = this.slot;
+    if (!slot || !this.reachedLevels(slot).includes(index)) return;
+    const e = CAMPAIGN[index];
+    this.replayCheckpoint = null;
+    await this.startLevel(e.id, o.seed || randomSeedString(), o.difficulty, { mode: 'replay', index, inv: Inventory.fromState(slot.inventory), stats: new Stats(), deaths: 0 });
   }
 
   // ---- levels ----
@@ -107,8 +96,7 @@ export class Flow {
     g.beginLoad(def.name);
     const seed = typeof seedText === 'number' ? seedText : parseSeed(seedText);
     const inv = o.inv ?? Inventory.starter();
-    this.inHub = false;
-    this.run = { mode: o.mode ?? 'campaign', index: o.index ?? Math.max(0, CAMPAIGN.findIndex((c) => c.id === id)), levelId: id, seed: String(seedText), difficulty, startInv: Inventory.fromState(inv.toState()), deaths: o.deaths ?? 0 };
+    const r0 = this.run = { mode: o.mode ?? 'campaign', index: o.index ?? Math.max(0, CAMPAIGN.findIndex((c) => c.id === id)), levelId: id, seed: String(seedText), difficulty, startInv: Inventory.fromState(inv.toState()), deaths: o.deaths ?? 0 };
     const deaths = o.deaths ?? 0;
     const scene = new LevelScene(g, def, deriveSeed(seed, `level:${id}`), difficulty, undefined, {
       snapshot: o.snapshot,
@@ -126,6 +114,7 @@ export class Flow {
     scene.onDeath = () => void this.onDeath();
     this.wire(scene);
     g.finishLoad(scene);
+    g.ui.levelCard(def.name, def.act, r0.mode === 'replay');
   }
 
   private wire(scene: LevelScene): void {
@@ -150,7 +139,7 @@ export class Flow {
     });
     this.hintsAtStart(scene);
     scene.onNote = (id) => this.foundNote(id);
-    scene.onCustom = (ref) => this.custom(ref as HubRef);
+    scene.onCustom = (ref) => this.custom(ref as { type: string });
   }
 
   private foundNote(id: string): void {
@@ -173,8 +162,6 @@ export class Flow {
   private hintsAtStart(scene: LevelScene): void {
     const touch = this.g.input.device === 'touch', pad = this.g.input.device === 'gamepad';
     const act = touch ? 'tap the button that appears' : pad ? 'press A' : 'press E';
-    const moveText = touch ? 'Left thumb moves, right thumb looks.' : pad ? 'Left stick moves, right stick looks.' : 'WASD or arrows to move, mouse or Left/Right arrows to look.';
-    if (this.inHub) { this.hint('hubgoal', `${moveText} Safe place. Go to the door ahead and ${act}.`); return; }
     setTimeout(() => this.hint('goal', `Goal: find the exit and get out. Explore, ${act} near notes, keys and doors, and read the paper scraps people left. They are clues.`), 5200);
     this.hint('move', touch ? 'Left thumb moves, right thumb looks. Tap a slot to pick an item, tap it again (or USE) to use it. Buttons appear when something is near.' : pad ? 'Left stick moves, right stick looks. A interacts, Y toggles the flashlight.' : 'WASD or the arrow keys to move, mouse or Left/Right arrows to look. 1-4 or [ ] pick an item (press F to use it), G flashlight, E interact, Shift sprint, C crouch.');
     setTimeout(() => { if (scene.sim.flash.battery < 100) this.hint('battery', 'The flashlight drains. Wiggle the mouse (or shake) when it is low, and pick up batteries.'); }, 120000);
@@ -190,6 +177,7 @@ export class Flow {
   async checkpoint(index: number): Promise<void> {
     const g = this.g, slot = this.slot, L = g.level, r = this.run;
     if (!slot || !L || !r) return;
+    if (r.mode === 'replay') { this.replayCheckpoint = { waypoint: index, inventory: Inventory.fromState(L.sim.inv.toState()), stats: Stats.from(L.sim.stats.toSave(L.sim.player.stamina)), sim: L.sim.snapshot() }; return; } // (the HUD toast comes from the scene)
     slot.checkpoint = { levelId: r.levelId, waypoint: index, time: L.sim.time, inventory: L.sim.inv.toState(), stats: L.sim.stats.toSave(L.sim.player.stamina), seed: r.seed, mode: r.mode, difficulty: r.difficulty, index: r.index, deaths: r.deaths, sim: L.sim.snapshot() };
     slot.thumbnail = g.thumbnail();
     await g.autosave();
@@ -200,7 +188,7 @@ export class Flow {
     const L = this.g.level, slot = this.slot;
     if (!L || !slot) return false;
     const d = DIFFICULTIES[slot.difficulty];
-    if (!SaveManager.canManualSave(slot, d.manualSave, d.manualSaveLimit, L.sim.safeRoom || this.inHub)) { this.g.ui.toast('You cannot save here.', 'warn'); return false; }
+    if (!SaveManager.canManualSave(slot, d.manualSave, d.manualSaveLimit, L.sim.safeRoom)) { this.g.ui.toast('You cannot save here.', 'warn'); return false; }
     slot.manualSavesThisLevel++;
     if (L.sim.activatedWaypoints.size) await this.checkpoint([...L.sim.activatedWaypoints].pop()!);
     else await this.g.autosave();
@@ -222,9 +210,10 @@ export class Flow {
     }
     await new Promise((res) => setTimeout(res, 1600));
     if (r.mode === 'replay') {
-      // replays: you wake in the hub and the loot is gone
-      if (slot) { await g.saves.saveSlot(slot); }
-      g.ui.showRewind(false); await this.enterHub(r.index); return;
+      // replays: no penalty, you wake at your last checkpoint (or the start) with what you started with
+      const rc = this.replayCheckpoint;
+      await this.startLevel(r.levelId, r.seed, r.difficulty, { mode: 'replay', index: r.index, snapshot: rc?.sim, inv: rc ? rc.inventory : Inventory.fromState(r.startInv.toState()), stats: rc ? (rc.stats.revive(), rc.stats) : new Stats(), deaths: r.deaths + 1 });
+      g.ui.showRewind(false); return;
     }
     const cp = slot?.checkpoint;
     const baseInv = cp ? Inventory.fromState(cp.inventory) : Inventory.fromState(r.startInv.toState());
@@ -244,7 +233,7 @@ export class Flow {
       slot.inventory = inv.toState(); slot.stats = L.sim.stats.toSave(L.sim.player.stamina);
       if (L.sim.x.companion) slot.npcs.companion = { present: true, hp: L.sim.x.companion.data.hp };
       if (r.mode === 'campaign') SaveManager.completeLevel(slot, r.index, r.levelId, time, CAMPAIGN.length);
-      else { const prev = slot.completed[r.levelId]; if (!prev || time < prev.bestTime) slot.completed[r.levelId] = { bestTime: time, difficulty: r.difficulty }; slot.checkpoint = null; }
+      else { const prev = slot.completed[r.levelId]; if (!prev || time < prev.bestTime) slot.completed[r.levelId] = { bestTime: time, difficulty: r.difficulty }; } // a replay never touches the campaign checkpoint
       const p = g.profile;
       if (!p.bestTimes[r.levelId] || time < p.bestTimes[r.levelId]) p.bestTimes[r.levelId] = time;
       const done = (p.completedOn[r.levelId] ??= []); if (!done.includes(r.difficulty)) done.push(r.difficulty);
@@ -257,7 +246,8 @@ export class Flow {
     if (g.soundBank && g.audioEngine) g.soundBank.warp(g.audioEngine.flat('sfx', 0.2));
     g.gfx.glitch = 1;
     await new Promise((res) => setTimeout(res, 1100));
-    if (slot) await this.enterHub(r.index); else await g.showMenu();
+    if (!slot || r.mode === 'replay' || r.index + 1 >= CAMPAIGN.length) { await g.showMenu(); return; }
+    await this.startFrontier(slot, true); // straight into the next level
   }
 
   /** Replays: keep the starting kit plus at most REPLAY_LOOT_CAP newly found items (essentials always). */
@@ -305,13 +295,13 @@ export class Flow {
     g.ui.openPanel(h('div', { class: 'screen center panel' }, h('h2', {}, t.title), h('p', { class: 'note-text paper' }, t.text), h('p', { class: 'muted' }, `Ending ${g.profile.endings.length} of 6 seen.${g.profile.ngPlus.includes('unlocked') ? ' New Game+ is unlocked.' : ''}${u.titles.length ? ` Title: ${u.titles[u.titles.length - 1]}.` : ''}${slot?.flags.speedrun ? ` Run time ${Math.floor((slot.playtime + L.sim.time) / 60)}:${String(Math.floor((slot.playtime + L.sim.time) % 60)).padStart(2, '0')}.` : ''}`), h('button', { class: 'btn primary', onclick: done }, 'Continue')));
   }
 
-  // ---- hub interactions ----
+  // ---- level interactions (Architect, clue notes) ----
 
-  private custom(ref: HubRef): void {
+  private custom(ref: { type: string }): void {
     const g = this.g, ui = g.ui, close = () => ui.closePanel();
     if (!g.level) return;
-    if ((ref as { type: string }).type === 'architect') { ui.openPanel(finalePanel(g, close)); return; }
-    if ((ref as { type: string }).type === 'clue') {
+    if (ref.type === 'architect') { ui.openPanel(finalePanel(g, close)); return; }
+    if (ref.type === 'clue') {
       const c = ref as unknown as { text: string; img?: () => string | undefined };
       const src = c.img?.();
       g.sounds()?.click('tick');
@@ -319,24 +309,7 @@ export class Flow {
         src ? h('img', { class: 'clue-img', src, alt: c.text }) : h('p', { class: 'note-text paper' }, c.text),
         h('p', { class: 'clue-caption' }, c.text),
         h('button', { class: 'btn', onclick: close }, 'Put it back')));
-      return;
     }
-    if (ref.type === 'door') ui.openPanel(doorPanel(g, ref.index, this.hubState(), close));
-    else if (ref.type === 'npc') ui.openPanel(dialoguePanel(g, ref.id, close));
-    else switch (ref.kind) {
-      case 'stash': ui.openPanel(stashPanel(g, close)); break;
-      case 'noteboard': { for (const n of ['hub_board1', 'hub_board2']) this.foundNoteQuiet(n); ui.openPanel(h('div', { class: 'screen center panel' }, h('h2', {}, 'Notice board'), h('p', { class: 'note-text paper' }, `${NOTES.hub_board1.text}\n\n${NOTES.hub_board2.text}`), h('button', { class: 'btn', onclick: close }, 'Close'))); break; }
-      case 'bestiary': ui.openPanel(bestiaryPanel(g, close)); break;
-      case 'gallery': ui.openPanel(endingGalleryPanel(g, close)); break;
-      case 'camcorder': ui.openPanel(camcorderPanel(g, close)); break;
-      case 'kitchen': ui.openPanel(craftPanel(g, true, close)); break;
-      case 'crafting': ui.openPanel(craftPanel(g, false, close)); break;
-    }
-  }
-
-  private foundNoteQuiet(id: string): void {
-    const s = this.slot; if (s && !s.notesFound.includes(id)) s.notesFound.push(id);
-    if (!this.g.profile.journal.includes(id)) this.g.profile.journal.push(id);
   }
 
   openInventory(): void { const g = this.g; if (g.level) g.ui.openPanel(inventoryPanel(g, () => g.ui.closePanel())); }

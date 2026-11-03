@@ -10,7 +10,6 @@ import { DIFFICULTIES } from '../src/core/difficulty';
 import { Stats } from '../src/systems/stats';
 import { NOTES } from '../src/story/notes';
 import { ENDING_TEXT, BASE_STATE, resolveEnding } from '../src/story/endings';
-import { generateHub } from '../src/levels/hub';
 
 const ACT3 = ['metro', 'carnival', 'suburbs', 'wheatfield', 'arctic', 'city', 'level94', 'gallery', 'chase', 'finale'];
 const face = (e: { x: number; z: number; yaw: number }, t: { x: number; z: number }) => { e.yaw = Math.atan2(-(t.x - e.x), -(t.z - e.z)); };
@@ -210,5 +209,4 @@ describe('Finale and endings', () => {
     expect(R({})).toBe('escape'); expect(R({ acceptedArchitect: true })).toBe('join'); expect(R({ companionAlive: true, chosenStay: true })).toBe('sacrifice');
     expect(R({ refusedExit: true })).toBe('loop'); expect(R({ anchorsFound: 5, trueDecision: true })).toBe('true'); expect(R({ secretSequence: true })).toBe('secret');
   });
-  it('the hub shows the Gantry wing survivor (Dr. Hale)', () => { expect(generateHub(1, 20).hub!.npcs.some((n) => n.id === 'hale')).toBe(true); });
 });
