@@ -100,7 +100,7 @@ export function roomLights(plan: LevelPlan, r: Room, rng: { next(): number }): L
     x = Math.min(r.x + r.w - 0.9, Math.max(r.x + 0.9, x)); z = Math.min(r.z + r.d - 0.6, Math.max(r.z + 0.6, z));
     out.push({
       x, y: H - 0.06, z, room: r.id,
-      flicker: roll < (plan.flicker ?? 0.18), broken: roll > 0.94 || (plan.unlit?.includes(r.id) ?? false), color: r.kind === 'supply' ? 0xfff0d0 : 0xfff2c0, intensity: 0.9 + rng.next() * 0.2,
+      flicker: roll < (plan.flicker ?? 0.34), broken: roll > 0.82 || (plan.unlit?.includes(r.id) ?? false), color: r.kind === 'supply' ? 0xfff0d0 : 0xfff2c0, intensity: 0.9 + rng.next() * 0.2,
     });
   }
   return out;

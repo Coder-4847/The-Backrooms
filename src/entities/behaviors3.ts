@@ -14,7 +14,8 @@ function wander(w: EntityWorld, e: Entity, c: AiContext, dt: number, speed: numb
 }
 
 const wraith: Behavior = (w, e, c, dt) => {
-  const p = c.player, spd = c.diff.entitySpeed;
+  // the finale chase is balanced to be outrunnable by sprint/walk alternation: no speed bonus below Hard
+  const p = c.player, spd = c.diff.id === 'normal' || c.diff.id === 'easy' ? Math.min(1, c.diff.entitySpeed) : c.diff.entitySpeed;
   const active = !!c.trainActive;
   e.data.hidden = !active;
   if (!active) { if (w.isHunting(e.state)) w.endHunt(); e.speed = 0; e.x += (e.home.x - e.x) * Math.min(1, dt); e.z += (e.home.z - e.z) * Math.min(1, dt); w.setState(e, 'patrol'); return; }

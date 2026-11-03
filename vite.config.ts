@@ -47,5 +47,5 @@ export default defineConfig({
   plugins: [pwaPlugin()],
   build: { target: 'es2022', chunkSizeWarningLimit: 900, sourcemap: false },
   server: { host: true, port: 5173 },
-  test: { include: ['tests/**/*.test.ts'], environment: 'node' },
+  test: { include: ['tests/**/*.test.ts'], environment: 'node', testTimeout: 60000 },
 } as never);

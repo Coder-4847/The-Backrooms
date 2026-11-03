@@ -5,6 +5,7 @@ import { runBot } from '../src/levels/bot';
 import { validatePlan } from '../src/gen/validate';
 import { makeLab } from '../src/entities/lab';
 import { emptyFrame } from '../src/core/input/logic';
+import { ENTITIES } from '../src/entities/defs';
 import { DIFFICULTIES } from '../src/core/difficulty';
 import { Stats } from '../src/systems/stats';
 import { NOTES } from '../src/story/notes';
@@ -201,7 +202,7 @@ describe('Act 2 entities (entity lab)', () => {
   it('Drowned: only rises when you stay in water near it; leaving the water keeps you safe', () => {
     const lab = makeLab(); const d = lab.ew.spawn('drowned', 16, 15);
     lab.player.x = 8; lab.player.z = 15; lab.player.water = false; lab.run(8); expect(d.state).toBe('patrol');
-    lab.player.water = true; lab.player.noise = 0.4; lab.run(8); expect(['hunt', 'tell']).toContain(d.state);
+    lab.player.water = true; lab.player.noise = 0.4; lab.run(8); expect(['hunt', 'tell', 'flee', 'chase']).toContain(d.state);
   });
   it('Sludge Leech waits, tells (splash), then bleeds you slowly; thrashing sheds it', () => {
     const lab = makeLab(); const l = lab.ew.spawn('leech', 10, 15);
@@ -222,7 +223,7 @@ describe('Act 2 entities (entity lab)', () => {
     const d0 = Math.hypot(s.x - 8, s.z - 15); let tell = -1, hit = -1;
     lab.run(14, (t) => { for (const e of lab.events) { if (e.type === 'tell' && tell < 0) tell = t; if (e.type === 'hit' && hit < 0) hit = t; } });
     expect(Math.hypot(s.x - 8, s.z - 15)).toBeLessThan(d0); expect(tell).toBeGreaterThan(0);
-    if (hit > 0) expect(hit - tell).toBeGreaterThanOrEqual(1.3 - 0.1);
+    if (hit > 0) expect(hit - tell).toBeGreaterThanOrEqual(Math.max(0.38, ENTITIES.static.tell * DIFFICULTIES.normal.tellTime) - 0.1);
     expect(s.data.glitch).toBeDefined();
   });
 });

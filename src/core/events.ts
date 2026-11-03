@@ -10,6 +10,8 @@ export interface GameEvents {
   'level:loaded': { id: string; seed: number };
   'save:written': { slot: number };
   'debug:overlay': { name: string; on: boolean };
+  /** A jump scare (or a mild `jolt`) is playing: the DOM overlay flashes and shakes the screen. */
+  'scare': { kind: 'light' | 'heavy' | 'lethal' | 'jolt'; ms: number };
 }
 
 type Handler<T> = (payload: T) => void;

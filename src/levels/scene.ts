@@ -14,6 +14,7 @@ import { EntityVisuals } from './entityVisuals';
 import { buildBody, buildStick, type Body } from '../entities/body';
 import { planClues, type Clue } from '../gen/clues';
 import { bearingWords, hubObjective, levelObjective, type Objective } from './objective';
+import { Jumpscare } from './scare';
 import { buildClues, loadHandFont, type ClueVisuals } from './clueArt';
 import { SceneFx } from './fx';
 import { buildHubObjects, hubInteractables, type HubState } from './hubObjects';
@@ -103,6 +104,10 @@ export class LevelScene {
   private surface: SurfaceShared = createSurfaceShared();
   private bakeLamps: LightDef[] = [];
   private viewmodel: Viewmodel | null = null;
+  private scare!: Jumpscare;
+  private dreadBed: { stop(f?: number): void; set(v: number): void } | null = null;
+  private lampBase = new Color();
+  private darkDirect = 1; private darkBounce = 0.5;
   private warm: Body[] = [];
   /** What to do next (HUD line) and a bearing hint that only appears once the player has stalled for a while. */
   objective: Objective | null = null;
@@ -131,18 +136,21 @@ export class LevelScene {
     this.bakeLamps = levelLights(this.plan);
     setBake(this.surface, bakeLighting(this.plan, this.bakeLamps));
     this.surface.uBakeTint.value.setHex(0xfff2c0);
-    this.surface.uBakeBounce.value = tier.materials === 'standard' ? 0.5 : 0.6;
+    // horror grade, every level: less fill light, deeper shadows, and the lamps do the work
+    this.darkBounce = (tier.materials === 'standard' ? 0.5 : 0.6) * 0.7;
+    this.surface.uBakeBounce.value = this.darkBounce;
+    this.surface.uBakeDirect.value = this.darkDirect = 0.7;
     this.surface.uPoolR.value = 0;
     this.extras.push({ dispose: () => { this.surface.uBakeLight.value?.dispose(); this.surface.uBakeGeo.value?.dispose(); } });
     this.lib = new MaterialLibrary(tier, svc.pool, svc.gfx.maxAnisotropy, def.look, this.seed, this.surface);
     await this.lib.load((d, t) => progress(0.1 + 0.5 * (d / t), 'Synthesizing materials'));
 
     const look = def.look;
-    this.scene.background = new Color(look.fogColor);
-    this.scene.fog = new FogExp2(look.fogColor, look.fogDensity / Math.max(0.5, st.drawDistance));
-    this.fogBase = { color: new Color(look.fogColor), density: look.fogDensity / Math.max(0.5, st.drawDistance) };
-    this.ambientBase = look.ambientIntensity;
-    this.ambientBase = look.ambientIntensity * 0.55; // baked bounce now carries most of the fill light
+    const fogCol = new Color(look.fogColor).multiplyScalar(0.55); // horror grade: the distance is dark, not bright haze
+    this.scene.background = fogCol.clone();
+    this.scene.fog = new FogExp2(fogCol.clone(), look.fogDensity / Math.max(0.5, st.drawDistance));
+    this.fogBase = { color: fogCol.clone(), density: (look.fogDensity * 1.5) / Math.max(0.5, st.drawDistance) };
+    this.ambientBase = look.ambientIntensity * 0.3; // horror grade: darker than the bake alone would be
     this.ambient = new AmbientLight(look.ambient, this.ambientBase);
     this.scene.add(this.ambient);
     if (tier.materials === 'standard') {
@@ -168,6 +176,7 @@ export class LevelScene {
     this.flash.target = this.flashTarget;
     for (const col of [0xff6a30, 0x70ff90]) { const l = new PointLight(col, 0, 12, 2); this.scene.add(l); this.dyn.push(l); }
     this.ev = new EntityVisuals(this.scene, tier.level);
+    this.lampBase.set(look.lampColor).multiplyScalar(2.6);
     this.viewmodel = new Viewmodel(tier.level);
     this.scene.add(svc.gfx.camera);
     this.viewmodel.attachTo(svc.gfx.camera);
@@ -185,6 +194,7 @@ export class LevelScene {
     progress(0.85, 'Placing objects');
     await this.buildObjects();
     this.fx = new SceneFx(svc, this.sim, this.ev, () => this.lights, this.fearBox);
+    this.scare = new Jumpscare(svc, this.sim, this.ev);
     this.sim.listeners.push((e) => { this.onSimEvent(e); this.fx.onEvent(e); });
     this.sim.player.onStep = (sprint, crouch) => this.footstep(sprint, crouch);
     this.sim.player.reduceShake = st.reduceShake;
@@ -451,13 +461,20 @@ export class LevelScene {
     const a = this.svc.audio(), s = this.svc.sounds();
     if (!a || !s) return;
     this.humHandles.push(s.hum(a.flat('ambience', 0.2), 0.1));
+    this.dreadBed = s.dread(a.flat('ambience', 0.1));
+    this.humHandles.push(this.dreadBed);
   }
+
+  /** Heart rate for the HUD. */
+  get bpm(): number { return this.fx?.bpm ?? 64; }
+  get stress(): number { return this.fx?.stress ?? 0; }
 
   private onSimEvent(e: SimEvent): void {
     const s = this.svc.sounds(), a = this.svc.audio();
     if (e.type === 'lights') this.restoreRooms(e.rooms);
     if (e.type === 'note') { const m = [...this.itemMeshes].find(([id]) => this.plan.items.find((i) => i.id === id)?.item === e.id); if (m) { m[1].removeFromParent(); this.itemMeshes.delete(m[0]); } this.onNote?.(e.id); s?.click('tick'); }
-    else if (e.type === 'death') this.onDeath?.();
+    else if (e.type === 'hit') this.scare.start(e.entity, Jumpscare.kindFor(e.damage, e.lethal));
+    else if (e.type === 'death') { if (this.scare.active) this.scare.onDone = () => this.onDeath?.(); else this.onDeath?.(); }
     else if (e.type === 'custom') this.onCustom?.(e.ref);
     else if (e.type === 'pickup') {
       const m = this.itemMeshes.get(e.item.id);
@@ -509,12 +526,20 @@ export class LevelScene {
     const gfx = svc.gfx, cam = gfx.camera;
     this.time += dt;
     const p = this.sim.player;
+    this.scare.update(dt);
     p.apply(cam, alpha, this.fearBox.v, this.time);
+    this.scare.applyCamera(cam);
     cam.getWorldDirection(this.fwd);
     this.streamer.update(cam.position.x, cam.position.z);
     this.lights.update(cam.position.x, cam.position.y, cam.position.z, this.time, dt);
     this.surface.uPoolR.value = this.lights.coverRadius;
     this.lib.pump(svc.gfx.renderer);
+    // blackout: lamps die, baked light and fill go with them, the dread bed swells
+    const dark = this.lights.dark;
+    this.surface.uBakeDirect.value = this.darkDirect * (1 - dark);
+    this.surface.uBakeBounce.value = this.darkBounce * (1 - 0.92 * dark);
+    this.lib.lamp.color.copy(this.lampBase).multiplyScalar(1 - 0.96 * dark);
+    this.dreadBed?.set(Math.max(this.stress, dark * 0.9));
     this.dust?.update(this.time, cam.position.x, cam.position.z);
     this.props?.update(this.time);
     // flashlight follows the camera with a little lag-free offset
@@ -535,7 +560,7 @@ export class LevelScene {
     if (fog && !this.plan.cold) { const dive = this.sim.player.swim === 'dive'; fog.density += ((dive ? this.fogBase.density * 5 + 0.05 : this.fogBase.density) - fog.density) * Math.min(1, dt * 6); fog.color.lerp(dive ? this.tmpC.setHex(0x0a2a3a) : this.fogBase.color, Math.min(1, dt * 6)); }
     for (const [id, w] of this.valveMeshes) w.rotation.z = (this.sim.x.valves.get(id) ?? 0) * (Math.PI / 2);
     const nv = this.sim.cam.nightVision;
-    gfx.nightVision = nv; this.ambient.intensity = this.ambientBase * (nv ? 4 : 1);
+    gfx.nightVision = nv; this.ambient.intensity = this.ambientBase * (nv ? 4 : 1) * (1 - 0.85 * this.lights.dark);
     // flare + glowstick light (fixed light count: no shader recompiles)
     const fl = this.sim.flares[this.sim.flares.length - 1], gl = this.sim.glows[this.sim.glows.length - 1];
     for (const [i, src] of [fl, gl].entries()) { const l = this.dyn[i]; if (src) { l.position.set(src.x, 0.4, src.z); l.intensity = (i === 0 ? 16 : 5) * Math.min(1, src.t / 4); } else l.intensity = 0; }
@@ -607,6 +632,7 @@ export class LevelScene {
 
   dispose(): void {
     document.body.classList.remove('hiding');
+    if (this.scare) { this.scare.onDone = null; this.svc.gfx.fovKick = 0; }
     this.ev.dispose(); this.hubObj?.dispose(); this.viewmodel?.dispose();
     this.warm.forEach((b) => b.dispose()); this.warm = [];
     this.clueVis?.dispose();

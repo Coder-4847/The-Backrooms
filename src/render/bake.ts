@@ -18,7 +18,7 @@ export interface BakeResult {
 }
 
 /** Point-light intensity of a ceiling lamp (matches LightPool's base intensity). */
-export const LAMP_CANDELA = 9;
+export const LAMP_CANDELA = 6.5;
 
 export function bakeLighting(plan: LevelPlan, lamps: LightDef[], texel = 0.25): BakeResult {
   let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;

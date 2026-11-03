@@ -7,6 +7,7 @@ import { makeLab } from '../src/entities/lab';
 import { RECIPES, canCraft, craft, discover } from '../src/systems/crafting';
 import { Inventory } from '../src/systems/inventory';
 import { emptyFrame } from '../src/core/input/logic';
+import { ENTITIES } from '../src/entities/defs';
 import { DIFFICULTIES } from '../src/core/difficulty';
 import { NOTES } from '../src/story/notes';
 import { StaticWorld } from '../src/core/collision';
@@ -155,7 +156,7 @@ describe('new entities (entity lab)', () => {
     const lab2 = makeLab(); const s2 = lab2.ew.spawn('skinstealer', 8, 15);
     lab2.player.x = 6.8; lab2.player.z = 15; lab2.player.yaw = Math.PI / 2;
     let tell = -1, hit = -1; lab2.run(14, (t) => { for (const e of lab2.events) { if (e.type === 'tell' && tell < 0) tell = t; if (e.type === 'hit' && hit < 0) hit = t; } });
-    expect(tell).toBeGreaterThan(0); expect(hit).toBeGreaterThan(tell + 1.5 * DIFFICULTIES.normal.tellTime - 0.2);
+    expect(tell).toBeGreaterThan(0); expect(hit).toBeGreaterThan(tell + Math.max(0.38, ENTITIES.skinstealer.tell * DIFFICULTIES.normal.tellTime) - 0.2);
     void s2;
   });
   it('Concierge rings the bell (tell) before attacking and is slower than a sprint', () => {

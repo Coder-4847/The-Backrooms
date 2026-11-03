@@ -187,7 +187,7 @@ export class Game implements Services {
   /** Show the loading screen and tear down the current scene. */
   beginLoad(title: string): void {
     this.state = 'loading';
-    this.ui.hideAllMenus(); this.ui.closePanel(); this.ui.setLoading(true, title, 0);
+    this.ui.hideAllMenus(); this.ui.closePanel(); this.ui.clearScare(); this.ui.setLoading(true, title, 0);
     this.input.setGameplayActive(false);
     this.level?.dispose(); this.level = null;
   }

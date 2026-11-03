@@ -85,7 +85,7 @@ describe('endings, unlocks and achievements', () => {
     const plan = levelById('level1')!.generate(3);
     const a = new LevelSim(plan, 'normal', { spawnEntities: false }), b = new LevelSim(plan, 'normal', { spawnEntities: false, ngPlus: true });
     expect(b.diff.entitySpeed).toBeGreaterThan(a.diff.entitySpeed); expect(b.diff.entityPerception).toBeGreaterThan(a.diff.entityPerception);
-    expect(DIFFICULTIES.normal.entitySpeed).toBe(1); // the table itself is never mutated
+    expect(DIFFICULTIES.normal.entitySpeed).toBe(1.1); // the table itself is never mutated
   });
   it('lenses fall back to standard; old profiles without counters still load', async () => {
     expect(lensById('gold').sat).toBeGreaterThan(1); expect(lensById('nonsense').id).toBe('standard'); expect(lensById('mono').sat).toBe(0);

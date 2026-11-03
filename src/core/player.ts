@@ -37,6 +37,8 @@ export class Player {
   /** -1 (lean left) .. 1 (lean right), smoothed. */
   lean = 0;
   holdCrouchToggle = false; holdSprintToggle = false;
+  /** Seconds left in a jump-scare freeze: movement and look input are ignored. */
+  lockT = 0;
   onStep: ((sprint: boolean, crouch: boolean) => void) | null = null;
   private fwd = new Vector3(); private right = new Vector3();
   private euler = new Euler(0, 0, 0, 'YXZ');
@@ -45,6 +47,7 @@ export class Player {
 
   update(dt: number, f: InputFrame, world: StaticWorld): void {
     this.px = this.x; this.pz = this.z;
+    if (this.lockT > 0) { this.lockT -= dt; f = { ...f, moveX: 0, moveY: 0, lookX: 0, lookY: 0, down: { ...f.down, Sprint: false, Crouch: false, Jump: false } }; }
     this.yaw -= f.lookX;
     this.pitch = Math.max(-1.45, Math.min(1.45, this.pitch - f.lookY));
 

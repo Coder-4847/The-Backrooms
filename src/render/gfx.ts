@@ -31,6 +31,8 @@ export class Gfx {
   fear = 0;
   glitch = 0;
   nightVision = false;
+  /** Extra field of view in degrees (jump-scare punch); eased by the caller. */
+  fovKick = 0;
 
   private composer: EffectComposer | null = null;
   private renderPass: RenderPass | null = null;
@@ -88,7 +90,7 @@ export class Gfx {
     this.disposePost();
     if (tier.post === 'none') {
       r.toneMapping = AgXToneMapping;
-      r.toneMappingExposure = 1.05; // no eye adaptation on Potato: a fixed exposure
+      r.toneMappingExposure = 0.8; // no eye adaptation on Potato: a fixed, dim exposure
     } else {
       // OutputPass reads renderer.toneMapping (scene passes render to HDR targets, untonemapped)
       r.toneMapping = AgXToneMapping;
@@ -145,8 +147,8 @@ export class Gfx {
     const u = this.vhs?.u;
     if (!u) return;
     u.uTint.value.set(g.tint[0] * this.lens.tint[0], g.tint[1] * this.lens.tint[1], g.tint[2] * this.lens.tint[2]);
-    u.uSat.value = g.saturation * this.lens.sat;
-    u.uContrast.value = g.contrast;
+    u.uSat.value = g.saturation * this.lens.sat * 0.84; // horror grade: drained colour, harder contrast
+    u.uContrast.value = g.contrast * 1.1;
   }
 
   applyLook(look: LevelLook): void {
@@ -154,8 +156,6 @@ export class Gfx {
     const u = this.vhs?.u;
     if (!u) return;
     u.uTint.value.set(...look.grade.tint);
-    u.uSat.value = look.grade.saturation;
-    u.uContrast.value = look.grade.contrast;
     this.applyGrade(look.grade);
   }
 
@@ -191,6 +191,8 @@ export class Gfx {
   render(dt: number): void {
     this.time += dt;
     const s = this.settings;
+    const fov = s.fov + this.fovKick;
+    if (Math.abs(this.camera.fov - fov) > 0.01) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
     if (this.vhs) {
       const u = this.vhs.u;
       const on = s.vhs;

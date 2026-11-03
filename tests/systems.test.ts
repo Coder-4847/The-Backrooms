@@ -118,7 +118,8 @@ describe('Level 0 in the real simulation', () => {
   const plan = level0.generate(77);
   it('has the Level 0 ecology: one stick, a hound pack, lockers and notes', () => {
     const sim = new LevelSim(plan);
-    expect(sim.ew.entities.filter((e) => e.def.id === 'stick')).toHaveLength(1);
+    expect(plan.entitySlots.filter((s) => s.entity === 'stick')).toHaveLength(1); // the plan's ecology is unchanged
+    expect(sim.ew.entities.filter((e) => e.def.id === 'stick').length).toBeGreaterThanOrEqual(1); // plus a roaming extra on Normal
     expect(sim.ew.entities.filter((e) => e.def.id === 'hound').length).toBeGreaterThanOrEqual(2);
     expect(plan.hides!.length).toBeGreaterThan(5);
     expect(plan.items.filter((i) => i.kind === 'note').length).toBe(8); // 6 scattered + the Anchor hint + the secret hint

@@ -15,7 +15,7 @@ export interface EntityDef {
   packSize: [number, number];
 }
 
-export const ENTITIES: Record<string, EntityDef> = {
+const BASE: Record<string, EntityDef> = {
   stick: { id: 'stick', name: 'Stick', behavior: 'stick', walk: 1.0, run: 2.1, radius: 0.35, height: 2.8, sightRange: 22, sightFov: 2.2, hearing: 0.4, tell: 1.6, damage: 16, cooldown: 6, packSize: [1, 1] },
   hound: { id: 'hound', name: 'Hound', behavior: 'hound', walk: 1.7, run: 3.5, radius: 0.35, height: 0.9, sightRange: 13, sightFov: 2.0, hearing: 1.0, tell: 1.3, damage: 11, cooldown: 1.4, packSize: [2, 3] },
   howler: { id: 'howler', name: 'Howler', behavior: 'howler', walk: 1.2, run: 3.2, radius: 0.4, height: 1.9, sightRange: 0, sightFov: 0, hearing: 2.2, tell: 1.4, damage: 20, cooldown: 3, packSize: [1, 1] },
@@ -42,3 +42,25 @@ export const ENTITIES: Record<string, EntityDef> = {
   pursuer: { id: 'pursuer', name: 'The Pursuer', behavior: 'pursuer', walk: 2.4, run: 2.7, radius: 0.9, height: 4.2, sightRange: 60, sightFov: 6.3, hearing: 1, tell: 1.2, damage: 100, cooldown: 6, packSize: [1, 1] },
   architect: { id: 'architect', name: 'The Architect', behavior: 'architect', walk: 0, run: 0, radius: 0.4, height: 2.4, sightRange: 30, sightFov: 6.3, hearing: 0, tell: 0, damage: 0, cooldown: 0, packSize: [1, 1] },
 };
+
+/**
+ * Horror retune, applied to every hostile in one place so the whole bestiary stays consistent:
+ * warnings are short (you get a heartbeat of dread, not a lecture), hits take a real chunk of health
+ * (heavy hitters take about half of it), and everything notices and closes faster. Non-hostiles
+ * (damage 0) are untouched.
+ */
+function retune(d: EntityDef): EntityDef {
+  // the finale chase is balanced to be outrunnable (see the fairness test); everything else gets teeth
+  if (d.damage <= 0 || d.id === 'pursuer') return d;
+  const heavy = d.damage >= 14;
+  return {
+    ...d,
+    damage: Math.round(d.damage * (heavy ? 2.1 : d.damage < 5 ? 1.2 : 1.7)),
+    tell: d.tell > 0 ? Math.max(0.55, +(d.tell * 0.62).toFixed(2)) : 0,
+    cooldown: Math.max(0.8, +(d.cooldown * 0.7).toFixed(2)),
+    run: +(d.run * 1.06).toFixed(2),
+    sightRange: d.sightRange > 0 ? Math.round(d.sightRange * 1.2) : 0,
+    hearing: +(d.hearing * 1.25).toFixed(2),
+  };
+}
+export const ENTITIES: Record<string, EntityDef> = Object.fromEntries(Object.entries(BASE).map(([k, v]) => [k, retune(v)]));

@@ -93,7 +93,7 @@ try {
   await page.click('text=Step through'); await waitState('playing');
   const l1 = await ev(() => { const L = (window as any).__game.level; return { id: L.def.id, props: L.plan.props.length, ents: L.sim.ew.entities.map((e: any) => e.def.id) }; });
   check('Level 1 loads with props, hounds and Pim', l1.id === 'level1' && l1.props > 20 && l1.ents.includes('hound') && l1.ents.includes('companion'), JSON.stringify({ ...l1, ents: [...new Set(l1.ents)] }));
-  await ev(() => { const L = (window as any).__game.level; L.sim.ew.entities = L.sim.ew.entities.filter((e: any) => e.def.id === 'companion'); const pim = L.sim.ew.entities[0]; L.sim.player.place(pim.x + 1.2, pim.z); });
+  await ev(() => { const L = (window as any).__game.level; L.sim.director.update = () => null; L.sim.ew.entities = L.sim.ew.entities.filter((e: any) => e.def.id === 'companion'); const pim = L.sim.ew.entities[0]; L.sim.player.place(pim.x + 1.2, pim.z); });
   await page.keyboard.press('KeyE'); await page.waitForTimeout(300);
   check('Pim can be recruited and follows', await ev(() => !!(window as any).__game.level.sim.x.companion));
   await ev(() => { const L = (window as any).__game.level; L.sim.inv.add('bottle'); L.sim.inv.add('rag'); });
@@ -105,7 +105,7 @@ try {
   await page.keyboard.press('KeyT'); await page.waitForTimeout(300);
   check('throwing uses the distraction and makes noise', await ev(() => { const L = (window as any).__game.level; return L.sim.inv.count('distraction') === 0 && L.sim.noise.events.length > 0; }));
   // ---- Act 2: dark level, water + breath, garage breakers ----
-  const startL = (id: string) => ev(async () => null).then(() => page.evaluate(async (lvl) => { const g = (window as any).__game; await g.flow.startLevel(lvl, 'ACT2-SMOKE', 'normal', { mode: 'replay', index: 7 }); return { id: g.level.def.id, dark: !!g.level.plan.dark, ents: g.level.sim.ew.entities.map((e: any) => e.def.id), water: (g.level.plan.water ?? []).length }; }, id));
+  const startL = (id: string) => ev(async () => null).then(() => page.evaluate(async (lvl) => { const g = (window as any).__game; await g.flow.startLevel(lvl, 'ACT2-SMOKE', 'normal', { mode: 'replay', index: 7 }); g.level.sim.director.update = () => null; /* the Director now ambushes: freeze it so scripted checks stay deterministic */ return { id: g.level.def.id, dark: !!g.level.plan.dark, ents: g.level.sim.ew.entities.map((e: any) => e.def.id), water: (g.level.plan.water ?? []).length }; }, id));
   const l6 = await startL('level6');
   check('Level 6 is dark with Lurkers', l6.id === 'level6' && l6.dark && l6.ents.includes('lurker'), JSON.stringify({ ...l6, ents: [...new Set(l6.ents)] }));
   const l7 = await startL('level7');
@@ -121,11 +121,11 @@ try {
   // ---- Act 3: open field, cold, train schedule, the chase, the finale ----
   const wf = await startL('wheatfield');
   check('Wheat Field is outdoors with a compass', wf.id === 'wheatfield' && (await ev(() => { const L = (window as any).__game.level; return L.plan.open && L.plan.rooms.some((r: any) => r.open) && L.plan.items.some((i: any) => i.item === 'compass'); })));
-  const ar = await startL('arctic');
+  await startL('arctic');
   await ev(() => { const L = (window as any).__game.level; L.sim.ew.entities.length = 0; const r = L.plan.rooms.find((q: any) => !L.plan.cold.warm.includes(q.id) && !q.open && q.w > 6); L.sim.player.place(r.x + r.w / 2, r.z + r.d / 2); });
   await page.waitForFunction(() => (window as any).__game.level.sim.stats.warmth < 98, null, { timeout: 60000 }).catch(() => {});
   await page.waitForTimeout(500);
-  check('Arctic: warmth drains and the WARM bar shows', (await ev(() => (window as any).__game.level.sim.stats.warmth)) < 100 && (await page.locator('.vitals').innerText()).includes('WARM'), JSON.stringify(ar.ents));
+  check('Arctic: warmth drains and the WARM bar shows', (await ev(() => (window as any).__game.level.sim.stats.warmth)) < 100 && (await page.locator('.vitals').innerText()).includes('WARM'), JSON.stringify(await ev(() => { const L = (window as any).__game.level; return { w: L.sim.stats.warmth, dead: L.sim.dead, t: L.sim.time, inWarm: L.sim.inWarm, vit: document.querySelector('.vitals')?.textContent }; })));
   const mt = await startL('metro');
   check('Metro has a schedule and Wraiths', mt.id === 'metro' && (await ev(() => !!(window as any).__game.level.plan.schedule)) && mt.ents.includes('wraith'));
   const ch = await startL('chase');

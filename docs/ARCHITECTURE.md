@@ -10,6 +10,7 @@
 - `src/levels`  `registry.ts` (the single `LEVELS` table) + `campaign.ts` (the 25-entry table the hub shows), `level0.ts`, `hub.ts` (procedural tunnel + wings),
                 `sim.ts` (headless gameplay core: player, items, stats, light, noise, director, entities, hiding), `bot.ts` (autopilot),
                 `scene.ts` (THREE wrapper) + `fx.ts` (events -> audio/hallucinations) + `entityVisuals.ts` + `hubObjects.ts`, `props.ts` (test room)
+- `src/levels` also holds `scare.ts` (jump-scare cinematic), `objective.ts` (HUD objective + bearing hint), `clueArt.ts`.
 - `src/render`  `quality.ts` (tiers, Auto pick, adaptive resolution - pure), `gfx.ts` (renderer + post chain), `vhs.ts` (VHS/grade pass),
                 `materials.ts` (per-tier materials, 512 first then 1K/2K streamed on a background worker), `lights.ts` (fixed-size light pool),
                 `bake.ts` (static light bake: every lamp + first bounce + room-box geometry, pure), `surface.ts` (shader patch: baked

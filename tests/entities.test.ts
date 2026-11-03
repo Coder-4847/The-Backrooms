@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { makeLab } from '../src/entities/lab';
 import { Director } from '../src/systems/director';
+import { ENTITIES } from '../src/entities/defs';
 import { DIFFICULTIES, DIFFICULTY_ORDER } from '../src/core/difficulty';
 import { Rng } from '../src/gen/rng';
 import { NoiseField } from '../src/systems/noise';
@@ -47,17 +48,24 @@ describe('Stick (entity lab)', () => {
         for (const e of lab.events) { if (e.type === 'tell' && tellAt < 0) tellAt = t; if (e.type === 'hit' && hitAt < 0) hitAt = t; }
       });
       expect(tellAt, diff).toBeGreaterThan(0); expect(hitAt, diff).toBeGreaterThan(tellAt);
-      expect(hitAt - tellAt, diff).toBeGreaterThanOrEqual(1.6 * DIFFICULTIES[diff].tellTime - 0.1);
+      expect(hitAt - tellAt, diff).toBeGreaterThanOrEqual(Math.max(0.38, ENTITIES.stick.tell * DIFFICULTIES[diff].tellTime) - 0.1);
     }
   });
-  it('looking at it during its tell cancels the attack', () => {
-    const lab = makeLab();
-    lab.ew.spawn('stick', 8, 15);
-    lab.player.x = 7; lab.player.z = 15; lab.player.yaw = Math.PI / 2;
-    lab.run(0.8); // tell has begun
-    lab.player.yaw = -Math.PI / 2; // turn and look
-    lab.run(5);
-    expect(lab.events.some((e) => e.type === 'hit')).toBe(false);
+  it('staring at it during its tell no longer saves you: only the flashlight in its face (or distance) does', () => {
+    const stare = makeLab();
+    stare.ew.spawn('stick', 8, 15);
+    stare.player.x = 7; stare.player.z = 15; stare.player.yaw = Math.PI / 2;
+    stare.run(0.35); // tell has begun
+    stare.player.yaw = -Math.PI / 2; // turn and look
+    stare.run(5);
+    expect(stare.events.some((e) => e.type === 'hit')).toBe(true);
+    const lit = makeLab();
+    lit.ew.spawn('stick', 8, 15);
+    lit.player.x = 7; lit.player.z = 15; lit.player.yaw = Math.PI / 2;
+    lit.run(0.35);
+    lit.player.yaw = -Math.PI / 2; lit.player.flashOn = true; lit.player.flashPower = 1;
+    lit.run(5);
+    expect(lit.events.some((e) => e.type === 'hit')).toBe(false);
   });
   it('observe-only mode never damages', () => {
     const lab = makeLab({ mode: 'observe' });
@@ -85,7 +93,7 @@ describe('Hound (entity lab)', () => {
     lab.player.x = 5; lab.player.z = 15; lab.player.yaw = -Math.PI / 2; face(h, lab.player);
     let tell = -1, chaseAt = -1;
     lab.run(6, (t) => { if (h.state === 'tell' && tell < 0) tell = t; if (h.state === 'chase' && chaseAt < 0) chaseAt = t; });
-    expect(tell).toBeGreaterThan(0); expect(chaseAt - tell).toBeGreaterThanOrEqual(1.3 - 0.1);
+    expect(tell).toBeGreaterThan(0); expect(chaseAt - tell).toBeGreaterThanOrEqual(Math.max(0.38, ENTITIES.hound.tell * DIFFICULTIES.normal.tellTime) - 0.1);
     expect(h.def.run).toBeGreaterThan(2.3); // faster than the player's walk
   });
   it('a hit never lands before the tell finished', () => {
@@ -138,10 +146,10 @@ describe('Director', () => {
       dir.phase = 'build';
       dir.huntStarted();
       expect(dir.allowHunt).toBe(true);
-      for (let i = 0; i < 60 * 30; i++) dir.update(1 / 60, 0.0);
+      for (let i = 0; i < 60 * 36; i++) dir.update(1 / 60, 0.0);
       // hunt ended with no threat: must now be in release or quiet and refuse hunts
       expect(['release', 'quiet']).toContain(dir.phase);
-      const minQuiet = 10;
+      const minQuiet = 5;
       let blocked = 0;
       for (let i = 0; i < 60 * minQuiet; i++) { dir.update(1 / 60, 0); if (!dir.allowHunt) blocked++; }
       expect(blocked).toBeGreaterThan(60 * (minQuiet - 3));

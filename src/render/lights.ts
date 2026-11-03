@@ -30,6 +30,9 @@ export class LightPool {
   coverRadius = 0;
   /** Seconds of Director-triggered flicker burst remaining. */
   burstT = 0;
+  /** Blackout: every lamp dies for a few seconds. `dark` eases 0 (lit) .. 1 (pitch black) and is read by the scene. */
+  blackT = 0; dark = 0;
+  blackout(seconds: number): void { this.blackT = Math.max(this.blackT, seconds); }
   burst(seconds: number): void { if (!this.reduceFlicker) this.burstT = seconds; }
 
   constructor(private scene: Scene, count: number, shadowCount: number, shadowMap: number, distance = 16) {
@@ -51,10 +54,14 @@ export class LightPool {
   setSources(defs: LightDef[]): void { this.all = defs; }
 
   /** Per-frame update from the viewer position. */
-  update(x: number, y: number, z: number, t: number, dt: number, baseIntensity = 9): void {
+  update(x: number, y: number, z: number, t: number, dt: number, baseIntensity = 6.8): void {
     const n = this.slots.length;
     if (!n) return;
     this.burstT = Math.max(0, this.burstT - dt);
+    this.blackT = Math.max(0, this.blackT - dt);
+    // lights die fast (a clunk) and come back with a stutter
+    this.dark += ((this.blackT > 0 ? 1 : 0) - this.dark) * Math.min(1, dt * (this.blackT > 0 ? 18 : 4));
+    if (this.blackT <= 0 && this.dark > 0.02) this.burstT = Math.max(this.burstT, 0.4);
     const burst = this.burstT > 0 ? (Math.sin(t * 53) * Math.sin(t * 19) > -0.2 ? 1 : 0.1) : 1;
     // pick the n nearest non-broken defs (selection by repeated min; n is small)
     const picked: LightDef[] = [];
@@ -92,7 +99,7 @@ export class LightPool {
         s.light.position.set(d.x, d.y - 0.15, d.z);
         this.color.setHex(d.color);
         s.light.color.copy(this.color);
-        s.light.intensity = baseIntensity * d.intensity * flickerAt(d, t, this.reduceFlicker) * s.fade * burst;
+        s.light.intensity = baseIntensity * d.intensity * flickerAt(d, t, this.reduceFlicker) * s.fade * burst * (1 - this.dark);
       } else s.light.intensity = 0;
     }
     // staggered shadow refresh: one shadowed slot per frame (entities and the player move, lamps don't)

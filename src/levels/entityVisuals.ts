@@ -8,7 +8,9 @@ export class EntityVisuals {
   private shadows = new Map<number, { mesh: Mesh; x: number; z: number }>();
   private shadowG = new CircleGeometry(0.38, 14);
   private shadowM = new MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.55, depthWrite: false });
-  private ghosts: { body: Body; x: number; z: number; yaw: number; ttl: number }[] = [];
+  private ghosts: { body: Body; x: number; z: number; yaw: number; ttl: number; sticky: boolean }[] = [];
+  /** Jump scare: draw this entity at (x, z) facing `yaw` instead of where the sim has it. */
+  lunge: { id: number; x: number; z: number; y: number; yaw: number; shake: number } | null = null;
   constructor(private scene: Scene, private level: number) {}
 
   sync(ew: EntityWorld, t: number, dt: number): void {
@@ -17,6 +19,14 @@ export class EntityVisuals {
       live.add(e.id);
       let b = this.bodies.get(e.id);
       if (!b) { b = buildBody(e.def.id, this.level); this.bodies.set(e.id, b); this.scene.add(b.group); }
+      const L = this.lunge && this.lunge.id === e.id ? this.lunge : null;
+      if (L) {
+        b.group.position.set(L.x + (Math.random() - 0.5) * L.shake, L.y, L.z + (Math.random() - 0.5) * L.shake);
+        b.group.rotation.y = L.yaw + (Math.random() - 0.5) * L.shake * 3;
+        b.group.visible = true;
+        b.update(2.5, t, dt, true, true); // arms up, head down: the tell pose, thrashing
+        continue;
+      }
       b.group.position.set(e.x, 0, e.z);
       b.group.rotation.y = e.yaw;
       b.group.visible = !(e.data.hidden || e.data.cloaked);
@@ -35,11 +45,11 @@ export class EntityVisuals {
   }
 
   /** A hallucinated Stick: vanishes when approached or lit (see LevelScene). */
-  addGhost(x: number, z: number, yaw: number, ttl = 8): void {
+  addGhost(x: number, z: number, yaw: number, ttl = 8, sticky = false): void {
     const body = buildStick(this.level, true);
     body.group.position.set(x, 0, z); body.group.rotation.y = yaw;
     this.scene.add(body.group);
-    this.ghosts.push({ body, x, z, yaw, ttl });
+    this.ghosts.push({ body, x, z, yaw, ttl, sticky });
   }
   get ghostList() { return this.ghosts; }
   killGhost(g: { ttl: number }): void { g.ttl = 0; }

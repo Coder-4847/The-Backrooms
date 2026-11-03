@@ -20,6 +20,10 @@ export class Ui {
   private root = $('#ui');
   private hud = $('#hud');
   private promptEl = h('div', { class: 'prompt' });
+  private heartEl = h('div', { class: 'heart', 'aria-hidden': 'true' }, h('i', {}, '♥'), h('b', {}, '64'), h('small', {}, 'BPM'));
+  private vigEl = h('div', { class: 'vig', 'aria-hidden': 'true' });
+  private scareEl = h('div', { class: 'scare', 'aria-hidden': 'true' });
+  private lastBpm = 0;
   private objEl = h('div', { class: 'objective', 'aria-live': 'polite' });
   private lastObj = '';
   private toasts = h('div', { class: 'toasts', 'aria-live': 'polite' });
@@ -44,8 +48,9 @@ export class Ui {
   constructor(private game: Game) {
     this.hud.append(
       h('div', { class: 'rec' }, h('i', { class: 'dot' }), 'REC', this.timeEl),
-      this.objEl, this.stamina, this.promptEl, this.statsEl, this.hotbar, this.vitals, this.gear, this.noise);
-    document.getElementById('app')!.append(this.toasts, this.captionEl, this.loading);
+      this.vigEl, this.heartEl, this.objEl, this.stamina, this.promptEl, this.statsEl, this.hotbar, this.vitals, this.gear, this.noise);
+    document.getElementById('app')!.append(this.toasts, this.captionEl, this.scareEl, this.loading);
+    bus.on('scare', (e) => this.playScare((e as { kind: string; ms: number }).kind, (e as { kind: string; ms: number }).ms));
     bus.on('toast', (t) => this.toast(t.text, t.kind));
     bus.on('caption', (c) => this.caption(c.text, c.ms));
     bus.on('quality:offerUp', (e) => this.toast(`Performance is great. Raise graphics to ${e.tier}? Use Settings > Graphics.`));
@@ -113,7 +118,7 @@ export class Ui {
 
   showRewind(on: boolean, title = 'REWINDING', sub = ''): void {
     this.rewindEl?.remove(); this.rewindEl = null;
-    if (!on) return;
+    if (!on) { this.clearScare(); return; }
     this.rewindEl = h('div', { class: 'rewind' }, h('div', { class: 'big' }, '◀◀ ' + title), sub && h('div', { class: 'muted' }, sub));
     document.getElementById('app')!.append(this.rewindEl);
   }
@@ -248,8 +253,34 @@ export class Ui {
         h('button', { class: 'btn', onclick: async () => { await this.game.autosave(); this.game.loop.paused = false; this.game.currentSlot = null; await this.game.showMenu(); } }, 'Exit to menu'))));
   }
 
+  /** Jump-scare overlay: white-hot flash into blood red, whole-screen shake, and for a lethal hit a slow fade to static and black. */
+  private playScare(kind: string, ms: number): void {
+    const el = this.scareEl, app = document.getElementById('app')!;
+    el.className = 'scare';
+    void el.offsetWidth; // restart the animation
+    el.classList.add('on', kind);
+    app.classList.remove('shaking', 'shake-hard');
+    void app.offsetWidth;
+    if (!this.game.settings.value.reduceShake) app.classList.add(kind === 'light' || kind === 'jolt' ? 'shaking' : 'shake-hard');
+    window.setTimeout(() => { app.classList.remove('shaking', 'shake-hard'); if (kind !== 'lethal') el.classList.remove('on', kind); }, Math.min(ms, kind === 'lethal' ? 1700 : ms));
+    if (kind === 'lethal') window.setTimeout(() => el.classList.add('dead'), 1500);
+    else window.setTimeout(() => el.classList.remove('dead'), 0);
+  }
+
+  /** Clear any lingering death overlay (respawn, new level). */
+  clearScare(): void { this.scareEl.className = 'scare'; document.getElementById('app')?.classList.remove('shaking', 'shake-hard'); }
+
   inGame(level: LevelScene | null): void {
     if (!level) return;
+    const bpm = Math.round(level.bpm);
+    if (bpm !== this.lastBpm) {
+      this.lastBpm = bpm;
+      ($('b', this.heartEl) as HTMLElement).textContent = String(bpm);
+      this.heartEl.style.setProperty('--beat', `${(60 / bpm).toFixed(3)}s`);
+      this.heartEl.classList.toggle('high', bpm >= 110); this.heartEl.classList.toggle('extreme', bpm >= 145);
+    }
+    this.vigEl.style.setProperty('--beat', `${(60 / Math.max(50, bpm)).toFixed(3)}s`);
+    this.vigEl.style.opacity = String(Math.min(0.95, Math.max(0, (level.stress - 0.15) * 1.3)));
     const sim = level.sim, st = sim.stats, inv = sim.inv;
     const s = sim.player.stamina;
     ($('i', this.stamina) as HTMLElement).style.width = `${s}%`;

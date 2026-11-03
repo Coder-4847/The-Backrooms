@@ -76,7 +76,7 @@ export class InputManager {
   }
 
   requestLock(): void {
-    if (this.tracker.device === 'kbm' && !document.pointerLockElement) this.el.requestPointerLock?.();
+    if (this.tracker.device === 'kbm' && !document.pointerLockElement) { try { (this.el.requestPointerLock?.() as unknown as Promise<void> | undefined)?.catch?.(() => { /* no user gesture (e.g. after a timed respawn): the next click re-locks */ }); } catch { /* older browsers throw synchronously */ } }
   }
 
   /** Next key or pad button pressed is reported (for the rebinding UI). */

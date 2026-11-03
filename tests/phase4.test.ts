@@ -5,6 +5,7 @@ import { runBot } from '../src/levels/bot';
 import { validatePlan } from '../src/gen/validate';
 import { makeLab } from '../src/entities/lab';
 import { emptyFrame } from '../src/core/input/logic';
+import { ENTITIES } from '../src/entities/defs';
 import { DIFFICULTIES } from '../src/core/difficulty';
 import { Stats } from '../src/systems/stats';
 import { NOTES } from '../src/story/notes';
@@ -146,7 +147,7 @@ describe('Carnival party rules, Suburbs, City, Level 94, Gallery', () => {
     let tell = -1, hit = -1;
     for (let k = 0; k < 6; k++) { lab.player.yaw = Math.PI / 2; lab.run(0.4); lab.player.yaw = -Math.PI / 2; lab.run(0.6, (t) => { for (const e of lab.events) { if (e.type === 'tell' && tell < 0) tell = t; if (e.type === 'hit' && hit < 0) hit = t; } }); }
     lab.run(4, (t) => { for (const e of lab.events) { if (e.type === 'tell' && tell < 0) tell = t; if (e.type === 'hit' && hit < 0) hit = t; } });
-    expect(tell).toBeGreaterThan(0); if (hit > 0) expect(hit - tell).toBeGreaterThanOrEqual(1.4 - 0.1);
+    expect(tell).toBeGreaterThan(0); if (hit > 0) expect(hit - tell).toBeGreaterThanOrEqual(Math.max(0.38, ENTITIES.windowman.tell * DIFFICULTIES.normal.tellTime) - 0.1);
   });
   it('Motion Echo replays your path five seconds late and kills only after a tell if you stand still', () => {
     const lab = makeLab({ difficulty: 'normal' });
@@ -188,7 +189,7 @@ describe('Run for Your Life (the chase)', () => {
     lab2.run(40); expect(Math.hypot(q.x - 8, q.z - 15)).toBeGreaterThan(8); // held off at the checkpoint
     const lab3 = makeLab(); lab3.ew.spawn('pursuer', 12, 15); lab3.player.x = 8; lab3.player.z = 15;
     let tell = -1, hit = -1; lab3.run(25, (t) => { for (const e of lab3.events) { if (e.type === 'tell' && tell < 0) tell = t; if (e.type === 'hit' && hit < 0) hit = t; } });
-    expect(tell).toBeGreaterThan(12); expect(hit).toBeGreaterThanOrEqual(tell + 1.2 - 0.1);
+    expect(tell).toBeGreaterThan(12); expect(hit).toBeGreaterThanOrEqual(tell + Math.max(0.38, ENTITIES.pursuer.tell * DIFFICULTIES.normal.tellTime) - 0.1);
   });
   it('FAIR: a runner who alternates sprinting and walking outruns the Pursuer to the exit on every tested seed (no god mode)', () => {
     const def = levelById('chase')!;

@@ -179,6 +179,95 @@ export class Sounds {
     const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 900; n.connect(lp).connect(ng).connect(out); n.start(t, 0, 0.15);
   }
 
+  /**
+   * The jump-scare sting: a shrieking noise sweep, a dissonant cluster of screaming saws with fast vibrato
+   * (tritone + minor second so nothing resolves), a sub boom that hits the chest and a crack of clipped noise.
+   * `power` 0.5 (light) .. 1.2 (lethal). Loud on purpose: the limiter catches it.
+   */
+  jumpscare(out: AudioNode, power = 1, dur = 1.35): void {
+    const c = this.ctx, t = c.currentTime;
+    const g = c.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.9 * power, t + 0.012); g.gain.exponentialRampToValueAtTime(0.5 * power, t + 0.25); g.gain.linearRampToValueAtTime(0, t + dur);
+    const sh = c.createWaveShaper(); const curve = new Float32Array(256); for (let i = 0; i < 256; i++) { const x = (i / 127.5) - 1; curve[i] = Math.tanh(x * 3.2); } sh.curve = curve;
+    // screaming cluster
+    for (const [f0, f1, det] of [[760, 1250, 0], [1090, 1700, 7], [532, 980, -9], [1410, 2300, 13]] as const) {
+      const o = c.createOscillator(); o.type = 'sawtooth'; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur * 0.35); o.frequency.exponentialRampToValueAtTime(f0 * 0.7, t + dur); o.detune.value = det * 6;
+      const lfo = c.createOscillator(); const lg = c.createGain(); lfo.frequency.value = 9 + Math.random() * 7; lg.gain.value = f0 * 0.06; lfo.connect(lg).connect(o.frequency);
+      const og = c.createGain(); og.gain.value = 0.22;
+      o.connect(og).connect(sh); o.start(t); lfo.start(t); o.stop(t + dur + 0.05); lfo.stop(t + dur + 0.05);
+    }
+    // shriek: bright noise with a rising band
+    const n = this.a.noiseSource(); const nf = c.createBiquadFilter(); nf.type = 'bandpass'; nf.Q.value = 2.5; nf.frequency.setValueAtTime(1800, t); nf.frequency.exponentialRampToValueAtTime(6200, t + 0.5); nf.frequency.exponentialRampToValueAtTime(2400, t + dur);
+    const ng = c.createGain(); ng.gain.setValueAtTime(0.9, t); ng.gain.exponentialRampToValueAtTime(0.25, t + 0.4); ng.gain.linearRampToValueAtTime(0, t + dur);
+    n.connect(nf).connect(ng).connect(sh); n.start(t, 0, dur + 0.05);
+    sh.connect(g).connect(out);
+    // chest boom + crack
+    const b = c.createOscillator(); const bg = c.createGain(); b.frequency.setValueAtTime(95, t); b.frequency.exponentialRampToValueAtTime(28, t + 0.5); bg.gain.setValueAtTime(1.2 * power, t); bg.gain.exponentialRampToValueAtTime(0.001, t + 0.7);
+    b.connect(bg).connect(out); b.start(t); b.stop(t + 0.75);
+    const k = this.a.noiseSource(); const kg = c.createGain(); kg.gain.setValueAtTime(0.9 * power, t); kg.gain.exponentialRampToValueAtTime(0.001, t + 0.09); const kf = c.createBiquadFilter(); kf.type = 'highpass'; kf.frequency.value = 900; k.connect(kf).connect(kg).connect(out); k.start(t, 0, 0.12);
+    this.a.caption('[SCREAM]', dur * 1000);
+  }
+
+  /** Close breathing: slow filtered-noise inhale / exhale pairs, wet and a little too near. */
+  breath(out: AudioNode, dur = 4.5, level = 0.5): void {
+    const c = this.ctx, t = c.currentTime;
+    const n = this.a.noiseSource(true); const f = c.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 780; f.Q.value = 1.4;
+    const f2 = c.createBiquadFilter(); f2.type = 'highpass'; f2.frequency.value = 280;
+    const g = c.createGain(); g.gain.value = 0;
+    let at = t + 0.1, i = 0;
+    while (at < t + dur) { const inh = i % 2 === 0, len = inh ? 0.9 : 1.2; g.gain.setValueAtTime(0.0001, at); g.gain.linearRampToValueAtTime(level * (inh ? 0.8 : 1), at + len * 0.4); g.gain.linearRampToValueAtTime(0.0001, at + len); f.frequency.setValueAtTime(inh ? 620 : 900, at); f.frequency.linearRampToValueAtTime(inh ? 1100 : 560, at + len); at += len + 0.25; i++; }
+    n.connect(f).connect(f2).connect(g).connect(out); n.start(t); n.stop(t + dur + 0.1);
+    this.a.caption('[breathing close behind you]', dur * 1000);
+  }
+
+  /** Knuckles on a wall: `n` knocks. */
+  knock(out: AudioNode, n = 3, gap = 0.42): void {
+    const c = this.ctx, t = c.currentTime;
+    for (let i = 0; i < n; i++) {
+      const at = t + i * gap + (Math.random() - 0.5) * 0.06;
+      const o = c.createOscillator(); const og = c.createGain(); o.frequency.setValueAtTime(190, at); o.frequency.exponentialRampToValueAtTime(70, at + 0.07);
+      og.gain.setValueAtTime(0.9, at); og.gain.exponentialRampToValueAtTime(0.001, at + 0.11); o.connect(og).connect(out); o.start(at); o.stop(at + 0.12);
+      const ns = this.a.noiseSource(); const nf = c.createBiquadFilter(); nf.type = 'lowpass'; nf.frequency.value = 1500; const ng = c.createGain(); ng.gain.setValueAtTime(0.7, at); ng.gain.exponentialRampToValueAtTime(0.001, at + 0.05); ns.connect(nf).connect(ng).connect(out); ns.start(at, 0, 0.07);
+    }
+    this.a.caption('[knocking]', n * gap * 1000 + 600);
+  }
+
+  /** A heavy door slamming somewhere close: boom, wood crack, rattling tail. */
+  slam(out: AudioNode): void {
+    const c = this.ctx, t = c.currentTime;
+    const b = c.createOscillator(); const bg = c.createGain(); b.frequency.setValueAtTime(80, t); b.frequency.exponentialRampToValueAtTime(30, t + 0.4); bg.gain.setValueAtTime(1.3, t); bg.gain.exponentialRampToValueAtTime(0.001, t + 0.8); b.connect(bg).connect(out); b.start(t); b.stop(t + 0.85);
+    const n = this.a.noiseSource(); const ng = c.createGain(); ng.gain.setValueAtTime(1, t); ng.gain.exponentialRampToValueAtTime(0.001, t + 0.18); const nf = c.createBiquadFilter(); nf.type = 'lowpass'; nf.frequency.value = 2600; n.connect(nf).connect(ng).connect(out); n.start(t, 0, 0.22);
+    for (let i = 0; i < 6; i++) { const at = t + 0.2 + i * 0.07 + Math.random() * 0.03; const o = c.createOscillator(); const og = c.createGain(); o.type = 'square'; o.frequency.value = 220 + Math.random() * 400; og.gain.setValueAtTime(0.12 / (i + 1), at); og.gain.exponentialRampToValueAtTime(0.001, at + 0.05); o.connect(og).connect(out); o.start(at); o.stop(at + 0.06); }
+    this.a.caption('[a door slams]', 1800);
+  }
+
+  /** The ringing in your ears after something terrible. */
+  tinnitus(out: AudioNode, dur = 4, level = 0.12): void {
+    const c = this.ctx, t = c.currentTime;
+    const o = c.createOscillator(); o.frequency.value = 4100; const o2 = c.createOscillator(); o2.frequency.value = 6350;
+    const g = c.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(level, t + 0.15); g.gain.linearRampToValueAtTime(level * 0.7, t + dur * 0.6); g.gain.linearRampToValueAtTime(0, t + dur);
+    o.connect(g); o2.connect(g); g.connect(out); o.start(t); o2.start(t); o.stop(t + dur + 0.05); o2.stop(t + dur + 0.05);
+  }
+
+  /**
+   * Continuous dread bed: two beating sub tones, an unresolved tritone drone and a thin filtered hiss, with a
+   * slow tremolo. `set(0..1)` swells it with tension: quiet unease at 0, a wall of low pressure at 1.
+   */
+  dread(out: AudioNode): Handle & { set(v: number): void } {
+    const c = this.ctx, t = c.currentTime;
+    const master = c.createGain(); master.gain.value = 0;
+    const trem = c.createGain(); trem.gain.value = 0.8; const lfo = c.createOscillator(); lfo.frequency.value = 0.11; const lg = c.createGain(); lg.gain.value = 0.2; lfo.connect(lg).connect(trem.gain);
+    const oscs: OscillatorNode[] = [lfo];
+    for (const [f, a, type] of [[41, 1, 'sine'], [43.3, 0.9, 'sine'], [58, 0.45, 'sine'], [82.4, 0.2, 'triangle'], [116.5, 0.14, 'sawtooth']] as const) {
+      const o = c.createOscillator(); o.type = type; o.frequency.value = f; const og = c.createGain(); og.gain.value = a * 0.5; o.connect(og).connect(trem); o.start(t); oscs.push(o);
+    }
+    const n = this.a.noiseSource(true); const nf = c.createBiquadFilter(); nf.type = 'bandpass'; nf.frequency.value = 5200; nf.Q.value = 9; const ng = c.createGain(); ng.gain.value = 0.012; n.connect(nf).connect(ng).connect(trem); n.start(t);
+    lfo.start(t); trem.connect(master).connect(out);
+    return {
+      stop: (fade = 1) => { master.gain.setTargetAtTime(0, c.currentTime, fade / 3); setTimeout(() => { oscs.forEach((o) => { try { o.stop(); } catch { /* already stopped */ } }); try { n.stop(); } catch { /* already stopped */ } }, fade * 1000 + 200); },
+      set: (v: number) => master.gain.setTargetAtTime(0.05 + 0.5 * Math.max(0, Math.min(1, v)), c.currentTime, 0.6),
+    };
+  }
+
   /** Short voice blip for dialogue (pitch per speaker). */
   blip(freq: number): void {
     const c = this.ctx, t = c.currentTime;

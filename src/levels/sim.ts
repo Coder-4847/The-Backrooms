@@ -17,6 +17,7 @@ import { itemDef } from '../systems/items';
 import { Stats, type Hallucination } from '../systems/stats';
 import { Flashlight, Camcorder } from '../systems/light';
 import { NoiseField, NOISE } from '../systems/noise';
+import { ENTITIES } from '../entities/defs';
 import { Director, type DirectorEvent } from '../systems/director';
 import { EntityWorld, type AiContext, type Entity, type PlayerPercept } from '../entities/ai';
 import { SimExtras } from './simExtras';
@@ -47,7 +48,7 @@ export type SimEvent =
   | { type: 'exit' }
   | { type: 'hide'; on: boolean }
   | { type: 'use'; item: string }
-  | { type: 'hit'; entity: Entity; damage: number }
+  | { type: 'hit'; entity: Entity; damage: number; /** this hit killed the player */ lethal: boolean }
   | { type: 'tell'; entity: Entity }
   | { type: 'death' }
   | { type: 'hallucination'; kind: Hallucination }
@@ -141,7 +142,7 @@ export class LevelSim {
     const keep = Math.min(1, this.diff.supply);
     for (const it of plan.items) if (it.kind === 'loot' && new Rng(deriveSeed(seed, it.id)).next() >= keep) this.collected.add(it.id);
     this.ew = new EntityWorld(plan, this.world, seed);
-    if (opts.spawnEntities !== false) this.ew.spawnFromPlan();
+    if (opts.spawnEntities !== false) { this.ew.spawnFromPlan(); this.ew.spawnExtras(Math.round(this.diff.ambush * 0.6)); }
     this.unlit = new Set(plan.unlit ?? []);
     for (const w of plan.water ?? []) this.water.set(w.room, w.depth);
     this.x = new SimExtras(this);
@@ -149,7 +150,7 @@ export class LevelSim {
     this.percept = { x: 0, z: 0, yaw: 0, hidden: false, crouching: false, noise: 0, light: 0.6, flashOn: false, flashPower: 0, flares: [] };
     this.ctx = { player: this.percept, noise: this.noise, openLocks: this.keys, diff: this.diff, director: this.director, mode: opts.mode ?? 'active', pass: 'none' };
     this.ew.listeners.push((e) => {
-      if (e.type === 'hit') { if (!this.player.god) this.stats.damage(e.damage, this.diff); this.emit({ type: 'hit', entity: e.entity, damage: e.damage }); }
+      if (e.type === 'hit') { if (!this.player.god) this.stats.damage(e.damage, this.diff); this.emit({ type: 'hit', entity: e.entity, damage: e.damage, lethal: !this.player.god && this.stats.health <= 0 }); }
       else if (e.type === 'tell') this.emit({ type: 'tell', entity: e.entity });
       else if (e.type === 'huntStart') this.director.huntStarted();
       else if (e.type === 'huntEnd') this.director.huntEnded();
@@ -244,13 +245,43 @@ export class LevelSim {
     const threat = this.ew.threatLevel(p.x, p.z);
     this.stats.update(dt, { light: pc.light, threat, safeRoom: this.safeRoom, resting: this.safeRoom && p.speed < 0.2, hungerEnabled: this.hungerEnabled && this.diff.hungerRate > 0 }, this.diff);
     const ev = this.director.update(dt, threat);
-    if (ev) this.emit({ type: 'director', event: ev });
+    if (ev) { this.emit({ type: 'director', event: ev }); if (ev === 'ambush') this.ambush(); }
+    this.reapAmbushers();
     const h = this.stats.hallucinate(dt, this.rng, false);
     if (h) this.emit({ type: 'hallucination', kind: h });
     if (this.stats.dead && !p.god) { this.dead = true; this.deaths++; this.emit({ type: 'death' }); return; }
     if (p.god) { this.stats.dead = false; this.stats.health = Math.max(this.stats.health, 50); }
 
     if (f.pressed.Interact) this.interact();
+  }
+
+  /**
+   * Director ambush: something that was not here a moment ago starts hunting you from out of sight.
+   * Picks one of the level's own hostile types; capped so a long session cannot flood the level.
+   */
+  private ambush(): void {
+    if (this.opts.spawnEntities === false || this.plan.hub || this.plan.entitySlots.some((s) => s.entity === 'pursuer')) return;
+    const p = this.player;
+    const live = this.ew.entities.filter((e) => e.def.damage > 0).length;
+    if (live >= 3 + Math.round(this.diff.ambush)) return;
+    const kinds = [...new Set(this.plan.entitySlots.map((s) => s.entity ?? '').filter((id) => id && ENTITIES[id]?.damage > 0))];
+    const id = kinds.length ? kinds[this.ew.rng.int(0, kinds.length - 1)] : 'hound';
+    const spots = this.plan.rooms.map((r) => ({ x: r.x + r.w / 2, z: r.z + r.d / 2, kind: r.kind })).filter((q) => q.kind !== 'start' && q.kind !== 'supply' && (() => { const d = Math.hypot(q.x - p.x, q.z - p.z); return d > 13 && d < 30 && this.world.segmentBlocked(p.x, p.z, q.x, q.z); })());
+    const at = spots.length ? spots[this.ew.rng.int(0, spots.length - 1)] : null;
+    if (!at) return;
+    const e = this.ew.spawn(id, at.x, at.z, 200 + this.deaths);
+    e.data.ambushUntil = this.time + 75;
+    if (e.def.behavior === 'stick') this.ew.change(e, 'hunt');
+    else if (e.def.behavior === 'hound') { e.target = { x: p.x, z: p.z }; this.ew.change(e, 'investigate'); }
+    else e.target = { x: p.x, z: p.z };
+  }
+
+  /** Ambushers fade away once their time is up and you are not looking (or are far away). */
+  private reapAmbushers(): void {
+    for (const e of this.ew.entities) {
+      const until = e.data.ambushUntil as number | undefined;
+      if (until !== undefined && this.time > until && !e.seenByPlayer && Math.hypot(e.x - this.player.x, e.z - this.player.z) > 16) this.ew.remove(e);
+    }
   }
 
   /** Everything the player could currently interact with, nearest first. */
@@ -347,9 +378,9 @@ export class LevelSim {
     this.stats.revive();
     this.player.place(this.respawn.x, this.respawn.z, this.respawn.yaw);
     this.ew = new EntityWorld(this.plan, this.world, (this.opts.seed ?? this.plan.seed) + this.deaths * 7919);
-    if (this.opts.spawnEntities !== false) this.ew.spawnFromPlan();
+    if (this.opts.spawnEntities !== false) { this.ew.spawnFromPlan(); this.ew.spawnExtras(Math.round(this.diff.ambush * 0.6)); }
     this.ew.listeners.push((e) => {
-      if (e.type === 'hit') { if (!this.player.god) this.stats.damage(e.damage, this.diff); this.emit({ type: 'hit', entity: e.entity, damage: e.damage }); }
+      if (e.type === 'hit') { if (!this.player.god) this.stats.damage(e.damage, this.diff); this.emit({ type: 'hit', entity: e.entity, damage: e.damage, lethal: !this.player.god && this.stats.health <= 0 }); }
       else if (e.type === 'tell') this.emit({ type: 'tell', entity: e.entity });
       else if (e.type === 'huntStart') this.director.huntStarted();
       else if (e.type === 'huntEnd') this.director.huntEnded();

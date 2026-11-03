@@ -100,6 +100,27 @@ export class EntityWorld {
     }
   }
 
+  /**
+   * Extra roaming hunters on top of the plan's ecology (the layout and its slots are untouched): every level
+   * has something that is already looking for you. Placed in ordinary rooms ~35% / ~65% along the critical
+   * path, never the start, the exit or the first two rooms; deterministic from the world's seed.
+   */
+  spawnExtras(count: number): void {
+    // never the Pursuer (the finale chase is one pursuer, tuned to be outrunnable) or the Architect
+    const hostile = [...new Set(this.entities.filter((e) => e.def.damage > 0 && e.def.id !== 'pursuer').map((e) => e.def.id))];
+    const path = this.plan.criticalPath;
+    if (!hostile.length || count <= 0 || path.length < 5) return;
+    for (let i = 0; i < count; i++) {
+      const idx = Math.max(2, Math.min(path.length - 2, Math.round(path.length * (0.35 + 0.3 * i))));
+      const r = this.plan.rooms[path[idx]];
+      if (r.kind === 'start' || r.kind === 'exit') continue;
+      const id = hostile[i % hostile.length];
+      const e = this.spawn(id, r.x + r.w / 2 + this.rng.range(-1, 1), r.z + r.d / 2 + this.rng.range(-1, 1), 100 + i);
+      e.state = 'patrol'; // roam from the first second (hounds would otherwise lurk in place until they see you)
+      e.data.extra = true;
+    }
+  }
+
   // ---- perception ----
 
   sees(e: Entity, c: AiContext): boolean {
@@ -197,7 +218,7 @@ export class EntityWorld {
 
   beginTell(e: Entity, c: AiContext): void {
     this.change(e, 'tell');
-    e.tellLeft = e.def.tell * c.diff.tellTime;
+    e.tellLeft = Math.max(0.38, e.def.tell * c.diff.tellTime);
     e.tellStarted = true;
     this.emit({ type: 'tell', entity: e });
   }
@@ -224,15 +245,22 @@ export class EntityWorld {
         if (p.hidden) { e.lostTime += dt; } else e.lostTime = 0;
         if (e.lostTime > 3) { this.change(e, 'patrol'); e.lostTime = 0; break; }
         if (d > 40) { this.change(e, 'patrol'); break; }
-        if (e.seenByPlayer) { e.speed = 0; break; } // frozen while watched
-        this.goTo(e, { x: p.x, z: p.z }, e.def.run * spd, dt, c);
-        if (d < 1.6 && e.cooldown <= 0 && !p.hidden) this.beginTell(e, c);
+        if (e.seenByPlayer) {
+          if (d > 9) { e.speed = 0; break; } // frozen while watched, but only at range
+          // inside 9 m it does not stop: it closes in twitchy bursts while you stare, faster the nearer it is
+          const burst = Math.sin(e.stateTime * 11 + e.id) > -0.2 ? e.def.walk * (1.1 + (9 - d) * 0.18) * spd : 0;
+          this.goTo(e, { x: p.x, z: p.z }, burst, dt, c);
+        } else this.goTo(e, { x: p.x, z: p.z }, e.def.run * spd, dt, c);
+        if (d < 1.9 && e.cooldown <= 0 && !p.hidden) this.beginTell(e, c);
         break;
       }
       case 'tell': {
         e.speed = 0;
-        if (e.seenByPlayer || d > 2.4) { e.tellLeft = Math.min(e.def.tell * c.diff.tellTime, e.tellLeft + dt * 2); if (d > 2.4 || e.seenByPlayer) { this.change(e, 'hunt'); break; } }
+        const lit = p.flashOn && p.flashPower > 0.5 && e.seenByPlayer && d < 6;
+        if (d > 2.8 || lit) { this.change(e, 'hunt'); break; } // only distance or the beam in its face breaks a tell
         e.tellLeft -= dt;
+        // it lunges the last half second of the tell: closes the gap so the hit is never "out of reach"
+        if (e.tellLeft < 0.5 && d > 0.9) this.steer(e, p.x, p.z, 3.2, dt);
         e.yaw = Math.atan2(-(p.x - e.x), -(p.z - e.z));
         if (e.tellLeft <= 0) { this.hit(e, c); this.change(e, 'flee'); }
         break;
@@ -241,7 +269,8 @@ export class EntityWorld {
         const away = { x: e.x + (e.x - p.x), z: e.z + (e.z - p.z) };
         const t = e.stateTime < 2 ? away : e.home;
         this.goTo(e, t, e.def.run * 1.1 * spd, dt, c);
-        if (e.stateTime > 6) this.change(e, 'patrol');
+        if (e.stateTime > 2.2 && !p.hidden) this.change(e, 'hunt'); // it backs off just long enough to be afraid of, then comes again
+        else if (e.stateTime > 6) this.change(e, 'patrol');
         break;
       }
       default: this.setState(e, 'patrol');

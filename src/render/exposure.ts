@@ -17,9 +17,11 @@ export class ExposurePass extends Pass {
   private quad: FullScreenQuad;
   private first = true;
   /** Middle-grey target, clamps and adaptation speed (1/s). */
-  key = 0.16;
-  minExposure = 0.55;
-  maxExposure = 1.9;
+  key = 0.1; // darker than middle grey on purpose: the horror grade
+  /** 1 = fully normalise every scene to `key`; below 1 the eye only partly adapts, so dark rooms stay dark. */
+  strength = 0.55;
+  minExposure = 0.3;
+  maxExposure = 1.45;
   speedUp = 1.4;    // dark -> bright (pupils constrict fast)
   speedDown = 0.45; // bright -> dark (slow, like real eyes)
   dt = 1 / 60;
@@ -52,14 +54,14 @@ export class ExposurePass extends Pass {
       depthTest: false, depthWrite: false,
     });
     this.apply = new ShaderMaterial({
-      uniforms: { tDiffuse: { value: null }, tLum: { value: null }, uKey: { value: this.key }, uMin: { value: this.minExposure }, uMax: { value: this.maxExposure } },
+      uniforms: { tDiffuse: { value: null }, tLum: { value: null }, uKey: { value: this.key }, uMin: { value: this.minExposure }, uMax: { value: this.maxExposure }, uStr: { value: this.strength } },
       vertexShader: VERT,
       fragmentShader: /* glsl */`
-        uniform sampler2D tDiffuse; uniform sampler2D tLum; uniform float uKey, uMin, uMax;
+        uniform sampler2D tDiffuse; uniform sampler2D tLum; uniform float uKey, uMin, uMax, uStr;
         varying vec2 vUv;
         void main() {
           float avg = exp( texture2D( tLum, vec2( 0.5 ) ).r );
-          float e = clamp( uKey / max( avg, 1e-4 ), uMin, uMax );
+          float e = clamp( pow( uKey / max( avg, 1e-4 ), uStr ), uMin, uMax );
           vec4 c = texture2D( tDiffuse, vUv );
           gl_FragColor = vec4( c.rgb * e, c.a );
         }`,
@@ -79,7 +81,7 @@ export class ExposurePass extends Pass {
     this.cur = 1 - this.cur;
     const a = this.apply.uniforms;
     a.tDiffuse.value = readBuffer.texture; a.tLum.value = next.texture;
-    a.uKey.value = this.key; a.uMin.value = this.minExposure; a.uMax.value = this.maxExposure;
+    a.uStr.value = this.strength; a.uKey.value = this.key; a.uMin.value = this.minExposure; a.uMax.value = this.maxExposure;
     this.quad.material = this.apply;
     renderer.setRenderTarget(this.renderToScreen ? null : writeBuffer);
     this.quad.render(renderer);
