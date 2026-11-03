@@ -13,6 +13,7 @@ import { LevelSim, type SimEvent, type SimOptions, type SimSnapshot } from './si
 import { EntityVisuals } from './entityVisuals';
 import { buildBody, buildStick, type Body } from '../entities/body';
 import { planClues, type Clue } from '../gen/clues';
+import { bearingWords, hubObjective, levelObjective, type Objective } from './objective';
 import { buildClues, loadHandFont, type ClueVisuals } from './clueArt';
 import { SceneFx } from './fx';
 import { buildHubObjects, hubInteractables, type HubState } from './hubObjects';
@@ -103,6 +104,10 @@ export class LevelScene {
   private bakeLamps: LightDef[] = [];
   private viewmodel: Viewmodel | null = null;
   private warm: Body[] = [];
+  /** What to do next (HUD line) and a bearing hint that only appears once the player has stalled for a while. */
+  objective: Objective | null = null;
+  objectiveHint: string | null = null;
+  private objBestDist = 99; private objKey = ''; private objProgressAt = 0; private objLoot = 0;
   private clues: Clue[] = [];
   private clueVis: ClueVisuals | null = null;
 
@@ -482,6 +487,20 @@ export class LevelScene {
     this.tick++;
     this.sim.step(f, dt);
     if (this.tick % 6 === 0) this.prompt = this.sim.interactables()[0]?.label ?? null;
+    if (this.tick % 30 === 0) this.updateObjective();
+  }
+
+  private updateObjective(): void {
+    const sim = this.sim, p = sim.player;
+    const o = this.plan.hub ? hubObjective(this.plan, this.opts.hub!) : levelObjective(sim);
+    this.objective = o;
+    if (this.plan.hub) { this.objectiveHint = null; return; }
+    const loot = sim.collected.size + sim.notes.size + sim.keys.size;
+    if (o.key !== this.objKey) { this.objKey = o.key; this.objBestDist = o.dist; this.objProgressAt = sim.time; }
+    else if (o.dist < this.objBestDist || loot !== this.objLoot) { this.objBestDist = Math.min(o.dist, this.objBestDist); this.objProgressAt = sim.time; }
+    this.objLoot = loot;
+    // stalled: nothing new for ~100 s of play -> say roughly which way the next step lies
+    this.objectiveHint = o.target && sim.time - this.objProgressAt > 100 ? `Lost? The next step is ${bearingWords(p.x, p.z, p.yaw, o.target)}.` : null;
   }
 
   /** Per rendered frame. */

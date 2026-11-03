@@ -20,6 +20,8 @@ export class Ui {
   private root = $('#ui');
   private hud = $('#hud');
   private promptEl = h('div', { class: 'prompt' });
+  private objEl = h('div', { class: 'objective', 'aria-live': 'polite' });
+  private lastObj = '';
   private toasts = h('div', { class: 'toasts', 'aria-live': 'polite' });
   private captionEl = h('div', { class: 'captions', 'aria-live': 'polite' });
   private stamina = h('div', { class: 'bar' }, h('i'));
@@ -42,7 +44,7 @@ export class Ui {
   constructor(private game: Game) {
     this.hud.append(
       h('div', { class: 'rec' }, h('i', { class: 'dot' }), 'REC', this.timeEl),
-      this.stamina, this.promptEl, this.statsEl, this.hotbar, this.vitals, this.gear, this.noise);
+      this.objEl, this.stamina, this.promptEl, this.statsEl, this.hotbar, this.vitals, this.gear, this.noise);
     document.getElementById('app')!.append(this.toasts, this.captionEl, this.loading);
     bus.on('toast', (t) => this.toast(t.text, t.kind));
     bus.on('caption', (c) => this.caption(c.text, c.ms));
@@ -253,7 +255,18 @@ export class Ui {
     ($('i', this.stamina) as HTMLElement).style.width = `${s}%`;
     this.stamina.classList.toggle('low', s < 25);
     const p = level.prompt;
-    const text = p ? `[${glyphFor('Interact', this.game.input.device, this.game.settings.value.bindings, this.game.input.padLayout)}] ${p}` : '';
+    const o = level.objective;
+    const big = sim.time < 14; // the first seconds of a level: make it hard to miss
+    const objText = o ? `${o.text}${o.sub ? `\n${o.sub}` : ''}${level.objectiveHint ? `\n${level.objectiveHint}` : ''}` : '';
+    if (objText !== this.lastObj) {
+      this.lastObj = objText;
+      this.objEl.replaceChildren(...(o ? [h('small', {}, big ? 'GOAL' : 'NOW'), h('div', {}, ...objText.split('\n').flatMap((t, i) => [i ? h('em', {}, t) : document.createTextNode(t)]))] : []));
+    }
+    this.objEl.classList.toggle('big', big);
+    const touch = this.game.input.device === 'touch';
+    const text = p ? (touch ? p : `[${glyphFor('Interact', this.game.input.device, this.game.settings.value.bindings, this.game.input.padLayout)}] ${p}`) : '';
+    this.game.input.touch.setInteract(touch && p ? verbFor(p) : null);
+    this.promptEl.classList.toggle('touch', touch);
     if (text !== this.lastPrompt) { this.promptEl.textContent = text; this.lastPrompt = text; }
     const t = new Date(Date.UTC(1993, 5, 14, 3, 12, 0) + sim.time * 1000);
     if (this.game.currentSlot?.flags.speedrun) { const tot = this.game.currentSlot.playtime + sim.time; this.timeEl.textContent = `RUN ${fmtTime(tot)}`; } else this.timeEl.textContent = `${t.getUTCHours().toString().padStart(2, '0')}:${t.getUTCMinutes().toString().padStart(2, '0')}:${t.getUTCSeconds().toString().padStart(2, '0')}  SP`;
@@ -311,3 +324,22 @@ export class Ui {
 
 const TIPS = ['Light is a tool. So is silence.', 'Entities hear more than they see.', 'If the hum stops, something changed.', 'Almond water restores more than thirst.', 'Not every corridor leads somewhere.'];
 function tipFor(p: number): string { return TIPS[Math.floor(p * 7) % TIPS.length]; }
+
+/** Short imperative for the touch interact button, from the interaction's label. */
+export function verbFor(label: string): string {
+  const l = label.toLowerCase();
+  if (l.startsWith('talk')) return 'Talk';
+  if (l.startsWith('continue campaign') || l.startsWith('replay')) return 'Open';
+  if (l.startsWith('sealed') || l.includes('not built')) return 'Try';
+  if (l.includes('notice board') || l.includes('bestiary') || l.includes('gallery')) return 'Look';
+  if (l.includes('stash') || l.includes('kitchen') || l.includes('crafting')) return 'Open';
+  if (l.startsWith('read')) return 'Read';
+  if (l.startsWith('take') || l.startsWith('pick')) return 'Take';
+  if (l.startsWith('hide') || l.includes('hiding')) return l.startsWith('leave') ? 'Come out' : 'Hide';
+  if (l.startsWith('unlock')) return 'Unlock';
+  if (l.startsWith('activate') || l.startsWith('checkpoint')) return 'Activate';
+  if (l.startsWith('leave')) return 'Leave';
+  if (l.includes('valve') || l.includes('turn') || l.includes('flip')) return 'Use';
+  if (l.includes('locked') || l.includes('needs') || l.includes('stuck') || l.includes('sealed') || l.includes('dead') || l.includes('chasm')) return 'Try';
+  return 'Use';
+}

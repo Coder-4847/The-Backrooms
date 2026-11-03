@@ -7,7 +7,6 @@ import type { Action } from './actions';
 interface BtnDef { action: Action; label: string; slot: number; always?: boolean }
 // slot = position in the button cluster (0 = nearest thumb)
 const BUTTONS: BtnDef[] = [
-  { action: 'Interact', label: 'E', slot: 0 },
   { action: 'Flashlight', label: '☼', slot: 1, always: true },
   { action: 'Crouch', label: '▽', slot: 2, always: true },
   { action: 'Sprint', label: '»', slot: 3, always: true },
@@ -19,6 +18,10 @@ const BUTTONS: BtnDef[] = [
 export class TouchControls {
   readonly root: HTMLElement;
   readonly held = new Set<Action>();
+  /** Buttons tapped since the last simulation tick: a tap shorter than one frame must still count. */
+  private tapped = new Set<Action>();
+  private interactEl: HTMLButtonElement;
+  private interactVerb = '';
   moveX = 0; moveY = 0; lookDX = 0; lookDY = 0;
   /** Swipe gesture accumulators (for shake-to-recharge). */
   swipeEnergy = 0;
@@ -44,9 +47,18 @@ export class TouchControls {
       el.setAttribute('aria-label', b.action);
       if (!b.always) el.hidden = true;
       this.bindButton(el, b.action);
-      cluster.appendChild(el);
+      // pause lives at the screen corner, outside the (scaled) cluster so it stays put
+      (b.action === 'Pause' ? this.root : cluster).appendChild(el);
       this.btns.set(b.action, el);
     }
+    // the contextual interact button: large, labelled with the verb, only present while something is in reach
+    this.interactEl = document.createElement('button');
+    this.interactEl.className = 'touch-interact';
+    this.interactEl.hidden = true;
+    this.interactEl.setAttribute('aria-label', 'Interact');
+    this.interactEl.innerHTML = '<b>TAP</b><span></span>';
+    this.bindButton(this.interactEl, 'Interact');
+    this.root.appendChild(this.interactEl);
     parent.appendChild(this.root);
     this.root.addEventListener('pointerdown', this.onDown);
     this.root.addEventListener('pointermove', this.onMove);
@@ -56,12 +68,25 @@ export class TouchControls {
   }
 
   private bindButton(el: HTMLElement, action: Action): void {
-    const down = (e: Event) => { e.preventDefault(); e.stopPropagation(); this.held.add(action); el.classList.add('on'); navigator.vibrate?.(8); };
+    const down = (e: Event) => { e.preventDefault(); e.stopPropagation(); this.held.add(action); this.tapped.add(action); el.classList.add('on'); navigator.vibrate?.(8); };
     const up = (e: Event) => { e.stopPropagation(); this.held.delete(action); el.classList.remove('on'); };
     el.addEventListener('pointerdown', down);
     el.addEventListener('pointerup', up);
     el.addEventListener('pointercancel', up);
     el.addEventListener('pointerleave', up);
+  }
+
+  /** Actions held now plus any tapped since the last call (cleared). Call once per input sample. */
+  takeHeld(): Set<Action> { const out = new Set<Action>([...this.held, ...this.tapped]); this.tapped.clear(); return out; }
+
+  /** Show the interact button with a short verb (or hide it when `verb` is null). */
+  setInteract(verb: string | null): void {
+    const show = verb !== null;
+    if (this.interactEl.hidden === !show && (!show || verb === this.interactVerb)) return;
+    this.interactEl.hidden = !show;
+    if (show) { this.interactVerb = verb; this.interactEl.querySelector('span')!.textContent = verb; if (!this.interactEl.classList.contains('shown')) navigator.vibrate?.(5); }
+    this.interactEl.classList.toggle('shown', show);
+    if (!show) { this.held.delete('Interact'); this.interactEl.classList.remove('on'); }
   }
 
   setVisible(v: boolean): void { this.visible = v; this.root.style.display = v ? '' : 'none'; if (!v) this.reset(); }
@@ -80,7 +105,7 @@ export class TouchControls {
   }
 
   private reset(): void {
-    this.held.clear(); this.moveX = this.moveY = 0; this.joyId = this.lookId = -1;
+    this.held.clear(); this.tapped.clear(); this.moveX = this.moveY = 0; this.joyId = this.lookId = -1;
     this.joyEl.style.display = 'none';
   }
 

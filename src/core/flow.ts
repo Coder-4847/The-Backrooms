@@ -80,7 +80,8 @@ export class Flow {
     await scene.load((p, label) => g.ui.setLoading(true, 'The Central Hub', p, label));
     const idx = arrivedIndex ?? Math.min(state.frontier, CAMPAIGN.length - 1);
     const door = scene.plan.hub!.doors.find((d) => d.index === idx);
-    if (door) scene.sim.player.place(door.pos.x, door.side === 'N' ? 2.4 : 3.6, door.side === 'N' ? 0 : Math.PI);
+    // arrive at the mouth of the alcove, facing the door and already within reach of it (the Open prompt is up on arrival)
+    if (door) scene.sim.player.place(door.pos.x, door.side === 'N' ? -0.35 : 6.35, door.side === 'N' ? 0 : Math.PI);
     this.wire(scene);
     g.finishLoad(scene);
     await g.saves.saveSlot(slot); // autosave on entering the hub
@@ -170,8 +171,11 @@ export class Flow {
   }
 
   private hintsAtStart(scene: LevelScene): void {
-    if (this.inHub) return;
     const touch = this.g.input.device === 'touch', pad = this.g.input.device === 'gamepad';
+    const act = touch ? 'tap the button that appears' : pad ? 'press A' : 'press E';
+    const moveText = touch ? 'Left thumb moves, right thumb looks.' : pad ? 'Left stick moves, right stick looks.' : 'WASD to move, mouse to look.';
+    if (this.inHub) { this.hint('hubgoal', `${moveText} Safe place. Go to the door ahead and ${act}.`); return; }
+    setTimeout(() => this.hint('goal', `Goal: find the exit and get out. Explore, ${act} near notes, keys and doors, and read the paper scraps people left. They are clues.`), 5200);
     this.hint('move', touch ? 'Left thumb moves, right thumb looks. Buttons appear when something is near.' : pad ? 'Left stick moves, right stick looks. A interacts, Y toggles the flashlight.' : 'WASD to move, mouse to look. G flashlight, E interact, Shift sprint, C crouch.');
     setTimeout(() => { if (scene.sim.flash.battery < 100) this.hint('battery', 'The flashlight drains. Wiggle the mouse (or shake) when it is low, and pick up batteries.'); }, 120000);
   }

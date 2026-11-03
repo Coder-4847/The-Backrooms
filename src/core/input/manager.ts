@@ -171,7 +171,7 @@ export class InputManager {
     }
 
     // --- actions ---
-    const touchHeld = new Set<Action>(this.touch.held);
+    const touchHeld = this.touch.takeHeld();
     for (const a of this.injectHeld) touchHeld.add(a);
     const held = this.latched.size ? new Set([...this.keys, ...this.latched]) : this.keys;
     const fresh = this.latched.size ? new Set(this.latched) : null;

@@ -7,6 +7,9 @@ import { buildBody } from '../src/entities/body';
 import type { Mesh } from 'three';
 import { planClues } from '../src/gen/clues';
 import { LEVELS } from '../src/levels/registry';
+import { bearingWords, levelObjective, routeToExit } from '../src/levels/objective';
+import { LevelSim } from '../src/levels/sim';
+import { verbFor } from '../src/ui/ui';
 
 const plan = levelById('level0')!.generate(42, { difficulty: 'normal' });
 
@@ -68,5 +71,35 @@ describe('clue notes', () => {
         expect(c.text.length).toBeGreaterThan(3);
       }
     }
+  });
+});
+
+describe('objectives and touch verbs', () => {
+  it('every level has a route to the exit and a sensible first objective', () => {
+    for (const def of LEVELS.filter((l) => !l.dev && l.id !== 'hub')) {
+      const p = def.generate(11, { difficulty: 'normal' });
+      if (p.hub || p.finale) continue;
+      const sim = new LevelSim(p, 'normal', { seed: 11 });
+      const o = levelObjective(sim);
+      expect(routeToExit(p, p.spawn.room), def.id).not.toBeNull();
+      expect(o.text.length, def.id).toBeGreaterThan(5);
+      expect(o.target, def.id).not.toBeNull();
+    }
+  });
+  it('names the missing tool for the first locked door on the way', () => {
+    const p = levelById('level2')!.generate(5, { difficulty: 'normal' });
+    const sim = new LevelSim(p, 'normal', { seed: 5 });
+    const locked = p.connections.some((c) => c.lock);
+    const o = levelObjective(sim);
+    if (locked) expect(/find|align|reboot|flip|key|open/i.test(o.text)).toBe(true);
+  });
+  it('bearing words are relative to where you look', () => {
+    expect(bearingWords(0, 0, 0, { x: 0, z: -10 })).toBe('straight ahead');   // yaw 0 looks toward -z
+    expect(bearingWords(0, 0, 0, { x: 10, z: 0 })).toBe('to your right');
+    expect(bearingWords(0, 0, 0, { x: -10, z: 0 })).toBe('to your left');
+    expect(bearingWords(0, 0, 0, { x: 0, z: 10 })).toBe('behind you');
+  });
+  it('touch verbs for every interaction label', () => {
+    for (const [l, v] of [['Talk to coworker', 'Talk'], ['Read note', 'Read'], ['Take Key', 'Take'], ['Hide in locker', 'Hide'], ['Leave hiding spot', 'Come out'], ['Unlock door', 'Unlock'], ['Activate checkpoint', 'Activate'], ['Leave', 'Leave'], ['Read the scrap of paper', 'Read'], ['Continue Campaign: Level 0: The Lobby', 'Open'], ['Notice board', 'Look'], ['Sealed door', 'Try'], ['Locked', 'Try'], ['Turn valve A (0)', 'Use']] as const) expect(verbFor(l)).toBe(v);
   });
 });
