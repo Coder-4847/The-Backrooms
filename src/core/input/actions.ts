@@ -2,7 +2,7 @@
 
 export const ACTIONS = [
   'Sprint', 'Crouch', 'Interact', 'UseItem', 'Flashlight', 'Camcorder', 'Inventory', 'Journal',
-  'HoldBreath', 'PeekLeft', 'PeekRight', 'Throw', 'Pause', 'Jump', 'Console', 'Slot1', 'Slot2', 'Slot3', 'Slot4', 'NextItem',
+  'HoldBreath', 'PeekLeft', 'PeekRight', 'Throw', 'Pause', 'Jump', 'Console', 'Slot1', 'Slot2', 'Slot3', 'Slot4', 'NextItem', 'PrevItem',
 ] as const;
 export type Action = (typeof ACTIONS)[number];
 export type DeviceKind = 'kbm' | 'gamepad' | 'touch';
@@ -31,7 +31,8 @@ export const DEFAULT_BINDINGS: Bindings = {
   Jump: { kb: ['Space'], pad: [PAD.B] },
   Console: { kb: ['Backquote'], pad: [] },
   Slot1: { kb: ['Digit1'], pad: [] }, Slot2: { kb: ['Digit2'], pad: [] }, Slot3: { kb: ['Digit3'], pad: [] }, Slot4: { kb: ['Digit4'], pad: [] },
-  NextItem: { kb: [], pad: [PAD.LT] },
+  NextItem: { kb: ['BracketRight', 'KeyX'], pad: [PAD.LT] },
+  PrevItem: { kb: ['BracketLeft', 'KeyZ'], pad: [PAD.RT] },
 };
 
 export function cloneBindings(b: Bindings): Bindings {
@@ -45,7 +46,8 @@ export function sanitizeBindings(raw: unknown): Bindings {
   for (const a of ACTIONS) {
     const r = (raw as Record<string, Partial<Binding>>)[a];
     if (!r) continue;
-    if (Array.isArray(r.kb) && r.kb.every((k) => typeof k === 'string')) out[a].kb = r.kb.slice(0, 3);
+    // NextItem used to have no keyboard keys: old saves keep the new defaults instead of an empty binding
+    if (Array.isArray(r.kb) && r.kb.every((k) => typeof k === 'string') && !(a === 'NextItem' && r.kb.length === 0)) out[a].kb = r.kb.slice(0, 3);
     if (Array.isArray(r.pad) && r.pad.every((n) => Number.isInteger(n))) out[a].pad = r.pad.slice(0, 3);
   }
   return out;
@@ -67,7 +69,7 @@ export function rebind(b: Bindings, action: Action, device: 'kb' | 'pad', code: 
 
 const KB_NAMES: Record<string, string> = {
   ShiftLeft: 'Shift', ShiftRight: 'Shift', ControlLeft: 'Ctrl', ControlRight: 'Ctrl', Space: 'Space', Escape: 'Esc',
-  Backquote: '`', Tab: 'Tab', ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→', Enter: 'Enter',
+  Backquote: '`', Tab: 'Tab', ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→', Enter: 'Enter', BracketLeft: '[', BracketRight: ']', PageUp: 'PgUp', PageDown: 'PgDn',
 };
 export function keyName(code: string): string {
   if (KB_NAMES[code]) return KB_NAMES[code];

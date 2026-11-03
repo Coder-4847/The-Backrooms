@@ -11,7 +11,8 @@ const BUTTONS: BtnDef[] = [
   { action: 'Crouch', label: '▽', slot: 2, always: true },
   { action: 'Sprint', label: '»', slot: 3, always: true },
   { action: 'Inventory', label: '▤', slot: 4, always: true },
-  { action: 'Throw', label: '↗', slot: 5 },
+  { action: 'UseItem', label: 'USE', slot: 5 },
+  { action: 'Throw', label: '↗', slot: 7 },
   { action: 'Pause', label: '❙❙', slot: 6, always: true },
 ];
 

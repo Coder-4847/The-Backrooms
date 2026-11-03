@@ -87,3 +87,18 @@ describe('input logic', () => {
     expect(padLayoutFromId('Xbox 360 Controller')).toBe('xbox');
   });
 });
+
+describe('item keys', () => {
+  it('NextItem / PrevItem have keyboard keys, and old saves with an empty NextItem pick them up', () => {
+    expect(DEFAULT_BINDINGS.NextItem.kb).toContain('BracketRight');
+    expect(DEFAULT_BINDINGS.PrevItem.kb).toContain('BracketLeft');
+    const old = JSON.parse(JSON.stringify(DEFAULT_BINDINGS)); old.NextItem.kb = []; delete old.PrevItem;
+    const b = sanitizeBindings(old);
+    expect(b.NextItem.kb).toEqual(DEFAULT_BINDINGS.NextItem.kb);
+    expect(b.PrevItem.kb).toEqual(DEFAULT_BINDINGS.PrevItem.kb);
+  });
+  it('arrow keys are not bound to any action (they are movement / look, handled by the manager)', () => {
+    const all = ACTIONS.flatMap((a) => DEFAULT_BINDINGS[a].kb);
+    for (const k of ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown']) expect(all).not.toContain(k);
+  });
+});

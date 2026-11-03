@@ -176,6 +176,9 @@ export class SimExtras {
   }
 
   // ---- items ----
+  /** Something in the pack can be thrown (drives the touch Throw button). */
+  canThrow(): boolean { return THROWABLE.some(([id]) => this.sim.inv.has(id)); }
+
   throwItem(): boolean {
     const s = this.sim, p = s.player;
     const t = THROWABLE.find(([id]) => s.inv.has(id));

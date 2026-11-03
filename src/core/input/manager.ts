@@ -16,6 +16,17 @@ export interface InputConfig {
 const MOUSE_RAD_PER_PX = 0.0022;
 const PAD_LOOK_RAD_PER_SEC = 2.8;
 const TOUCH_RAD_PER_PX = 0.0045;
+/** Keyboard-only look: arrow keys turn, PageUp/PageDown look up and down. */
+const KEY_LOOK_RAD_PER_SEC = 2.3;
+/** Keys the browser would otherwise use to scroll or navigate while the game has the keyboard. */
+const NAV_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown', 'Home', 'End', 'Space', 'Tab', 'Backquote']);
+
+/** Phones and tablets (including iPadOS, which reports itself as a Mac): touch is the primary input even when a keyboard is attached. */
+function isTouchDevice(): boolean {
+  const coarse = matchMedia('(pointer: coarse)').matches && !matchMedia('(pointer: fine)').matches;
+  const ipadOs = navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
+  return coarse || ipadOs || /iPad|iPhone|Android/i.test(navigator.userAgent) && navigator.maxTouchPoints > 0;
+}
 
 export class InputManager {
   readonly tracker: DeviceTracker;
@@ -32,7 +43,10 @@ export class InputManager {
   private prev = emptyActionMap();
   private cur = emptyActionMap();
   private frameOut: InputFrame = emptyFrame();
-  private wheelPulse = false;
+  private wheelDir = 0;
+  /** Touch-first devices (iPad + keyboard): keys and touch work together; pointer lock only once a real mouse shows up. */
+  private touchDevice = false;
+  private mouseSeen = false;
   private mouseDX = 0; private mouseDY = 0;
   private gyroDX = 0; private gyroDY = 0; private lastGyro: { a: number; b: number } | null = null;
   private tmp = { x: 0, y: 0 };
@@ -44,15 +58,15 @@ export class InputManager {
 
   constructor(private el: HTMLElement, cfg: InputConfig, uiParent: HTMLElement) {
     this.cfg = cfg;
-    const touchFirst = matchMedia('(pointer: coarse)').matches && !matchMedia('(pointer: fine)').matches;
-    this.tracker = new DeviceTracker(touchFirst ? 'touch' : 'kbm');
+    this.touchDevice = isTouchDevice();
+    this.tracker = new DeviceTracker(this.touchDevice ? 'touch' : 'kbm');
     this.touch = new TouchControls(uiParent);
     window.addEventListener('keydown', this.onKeyDown);
     window.addEventListener('keyup', this.onKeyUp);
     window.addEventListener('blur', () => this.keys.clear());
     el.addEventListener('mousemove', this.onMouseMove);
     el.addEventListener('click', this.onClick);
-    el.addEventListener('wheel', () => { this.wheelPulse = true; }, { passive: true });
+    el.addEventListener('wheel', (e) => { this.wheelDir = e.deltaY > 0 ? 1 : e.deltaY < 0 ? -1 : 0; }, { passive: true });
     document.addEventListener('pointerlockchange', () => { this.locked = document.pointerLockElement === el; });
     window.addEventListener('pointerdown', (e) => { if (e.pointerType === 'touch') this.note('touch'); }, { passive: true });
     window.addEventListener('gamepadconnected', (e) => { this.padLayout = padLayoutFromId(e.gamepad.id); });
@@ -64,19 +78,25 @@ export class InputManager {
 
   private note(d: DeviceKind): void {
     if (this.tracker.note(d)) {
-      this.touch.setVisible(d === 'touch' && this.wantLock);
+      this.touch.setVisible(this.wantLock && this.touchWanted());
       bus.emit('device:changed', { device: d });
     }
   }
 
   setGameplayActive(active: boolean): void {
     this.wantLock = active;
-    this.touch.setVisible(active && this.tracker.device === 'touch');
+    this.touch.setVisible(active && this.touchWanted());
     if (!active && document.pointerLockElement) document.exitPointerLock();
   }
 
+  /** Touch controls stay up on touch devices while a keyboard is in use; they only step aside for a gamepad. */
+  private touchWanted(): boolean {
+    const d = this.tracker.device;
+    return d === 'touch' || (this.touchDevice && d === 'kbm');
+  }
+
   requestLock(): void {
-    if (this.tracker.device === 'kbm' && !document.pointerLockElement) { try { (this.el.requestPointerLock?.() as unknown as Promise<void> | undefined)?.catch?.(() => { /* no user gesture (e.g. after a timed respawn): the next click re-locks */ }); } catch { /* older browsers throw synchronously */ } }
+    if (this.tracker.device === 'kbm' && (!this.touchDevice || this.mouseSeen) && !document.pointerLockElement) { try { (this.el.requestPointerLock?.() as unknown as Promise<void> | undefined)?.catch?.(() => { /* no user gesture (e.g. after a timed respawn): the next click re-locks */ }); } catch { /* older browsers throw synchronously */ } }
   }
 
   /** Next key or pad button pressed is reported (for the rebinding UI). */
@@ -88,10 +108,12 @@ export class InputManager {
     if (this.capture) { e.preventDefault(); const c = this.capture; this.capture = null; c('kb', e.code); return; }
     this.note('kbm');
     if (!e.repeat) { this.keys.add(e.code); this.latched.add(e.code); }
-    if (e.code === 'Tab' || e.code === 'Space' || e.code === 'Backquote') e.preventDefault();
+    // while playing, the arrow / page keys must never scroll or zoom the page (that is what made the screen "bug out")
+    if (NAV_KEYS.has(e.code) && (this.wantLock || e.code === 'Tab' || e.code === 'Space' || e.code === 'Backquote')) e.preventDefault();
   };
   private onKeyUp = (e: KeyboardEvent): void => { this.keys.delete(e.code); };
   private onMouseMove = (e: MouseEvent): void => {
+    this.mouseSeen = true;
     if (!this.locked) return;
     // Chrome can deliver one huge bogus delta right after pointer lock engages: ignore it
     if (Math.abs(e.movementX) > 300 || Math.abs(e.movementY) > 300) return;
@@ -120,7 +142,7 @@ export class InputManager {
     const b = cfg.bindings;
     const k = this.keys;
     const anyKey = k.size > 0;
-    if (anyKey) digitalMove(k.has('KeyA') || k.has('ArrowLeft'), k.has('KeyD') || k.has('ArrowRight'), k.has('KeyW') || k.has('ArrowUp'), k.has('KeyS') || k.has('ArrowDown'), this.tmp);
+    if (anyKey) digitalMove(k.has('KeyA'), k.has('KeyD'), k.has('KeyW') || k.has('ArrowUp'), k.has('KeyS') || k.has('ArrowDown'), this.tmp); // arrows: up/down walk, left/right turn (below)
     f.moveX = this.tmp.x; f.moveY = this.tmp.y;
     if (!anyKey) { f.moveX = 0; f.moveY = 0; }
 
@@ -128,6 +150,13 @@ export class InputManager {
     const sens = cfg.sensitivity * MOUSE_RAD_PER_PX;
     f.lookX = this.mouseDX * sens; f.lookY = this.mouseDY * sens * (cfg.invertY ? -1 : 1);
     this.mouseDX = this.mouseDY = 0;
+    // --- keyboard look (no mouse needed): arrows turn, PageUp / PageDown look up and down ---
+    if (anyKey) {
+      const turn = (k.has('ArrowRight') ? 1 : 0) - (k.has('ArrowLeft') ? 1 : 0); // same sign as moving the mouse right
+      const tilt = (k.has('PageDown') ? 1 : 0) - (k.has('PageUp') ? 1 : 0);
+      f.lookX += turn * KEY_LOOK_RAD_PER_SEC * cfg.sensitivity * dt;
+      f.lookY += tilt * KEY_LOOK_RAD_PER_SEC * 0.7 * cfg.sensitivity * dt;
+    }
 
     // --- gamepad ---
     const pads = navigator.getGamepads?.() ?? [];
@@ -153,7 +182,7 @@ export class InputManager {
     } else padDown.fill(false);
 
     // --- touch ---
-    if (this.tracker.device === 'touch' && this.touch.visible) {
+    if (this.touch.visible) { // (also while a keyboard is in use on a tablet)
       this.touch.takeLook(this.tmp);
       f.lookX += this.tmp.x * TOUCH_RAD_PER_PX * cfg.sensitivity + this.gyroDX;
       f.lookY += this.tmp.y * TOUCH_RAD_PER_PX * cfg.sensitivity * (cfg.invertY ? -1 : 1) + this.gyroDY;
@@ -181,7 +210,7 @@ export class InputManager {
     // every keydown since the last tick is a new press, even if the previous tap was already latched (rapid double taps)
     if (fresh) { const a = emptyActionMap(); resolveActions(b, fresh, [], new Set(), a); for (const k of ACTIONS) if (a[k]) f.pressed[k] = true; }
     for (const a of ACTIONS) { f.down[a] = this.cur[a]; this.prev[a] = this.cur[a]; }
-    if (this.wheelPulse) { f.pressed.NextItem = true; this.wheelPulse = false; }
+    if (this.wheelDir) { if (this.wheelDir > 0) f.pressed.NextItem = true; else f.pressed.PrevItem = true; this.wheelDir = 0; }
     f.device = this.tracker.device;
     return f;
   }

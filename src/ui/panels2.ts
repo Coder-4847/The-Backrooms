@@ -45,6 +45,8 @@ export function howToPlayPanel(close: () => void): HTMLElement {
     h('p', {}, 'You are filming. Everything you need is in the dark, in the walls, and in what people left behind.'),
     h('ul', { class: 'howto' },
       h('li', {}, h('b', {}, 'Move / look: '), 'WASD and mouse, sticks, or the touch joystick. Sprint costs stamina; crouch is quiet.'),
+      h('li', {}, h('b', {}, 'Keyboard only (iPad keyboard, no mouse): '), 'Up / Down arrows walk, Left / Right arrows turn, PageUp / PageDown look up and down. On touch, a keyboard works together with the on-screen controls.'),
+      h('li', {}, h('b', {}, 'Items: '), 'press 1-4, [ and ] (or Z / X) or the mouse wheel to pick a slot, F to use it. On touch, tap a slot to pick it and tap it again (or the USE button) to use it; a Throw button appears when you carry something to throw.'),
       h('li', {}, h('b', {}, 'Light: '), 'G toggles the flashlight, V the camcorder night vision. Both have batteries. Shake the mouse to squeeze a little charge out of a low flashlight.'),
       h('li', {}, h('b', {}, 'Noise: '), 'Walls dampen it; doors and pipes carry it. Crouch, hold your breath (B) and throw things (T) to misdirect.'),
       h('li', {}, h('b', {}, 'Hide: '), 'Lockers and desks (E). Some things can still smell you.'),

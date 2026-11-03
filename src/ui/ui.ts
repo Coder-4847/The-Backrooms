@@ -36,6 +36,8 @@ export class Ui {
   private panelEl: HTMLElement | null = null;
   private rewindEl: HTMLElement | null = null;
   private hudKey = '';
+  private hotbarKey = '';
+  private slotEls: HTMLButtonElement[] = [];
   panelOpen = false;
   private timeEl = h('span', { class: 'ts' });
   private statsEl = h('pre', { class: 'stats' });
@@ -54,6 +56,17 @@ export class Ui {
     bus.on('toast', (t) => this.toast(t.text, t.kind));
     bus.on('caption', (c) => this.caption(c.text, c.ms));
     bus.on('quality:offerUp', (e) => this.toast(`Performance is great. Raise graphics to ${e.tier}? Use Settings > Graphics.`));
+    // hotbar slots: select on pointer-down (a lost `click` was the mobile bug), never take keyboard focus
+    for (let i = 0; i < 4; i++) {
+      const b = h('button', { class: 'hb', 'aria-label': `Slot ${i + 1}`, tabindex: '-1', 'data-slot': String(i) }, h('small', {}, String(i + 1)), '—') as HTMLButtonElement;
+      this.slotEls.push(b); this.hotbar.append(b);
+    }
+    this.hotbar.addEventListener('pointerdown', (e) => {
+      const b = (e.target as HTMLElement).closest('.hb') as HTMLElement | null;
+      if (!b) return;
+      e.preventDefault(); e.stopPropagation();
+      this.pickSlot(Number(b.dataset.slot));
+    });
     this.showHud(false);
   }
 
@@ -253,6 +266,20 @@ export class Ui {
         h('button', { class: 'btn', onclick: async () => { await this.game.autosave(); this.game.loop.paused = false; this.game.currentSlot = null; await this.game.showMenu(); } }, 'Exit to menu'))));
   }
 
+  /**
+   * Tap / click a hotbar slot. First tap selects it; tapping the selected slot again uses it (toggles the
+   * flashlight or camcorder, eats / drinks / lights the item). Selecting never uses anything by itself.
+   */
+  private pickSlot(i: number): void {
+    const L = this.game.level; if (!L) return;
+    const sim = L.sim, inv = sim.inv;
+    if (inv.selected !== i) { inv.selected = i; this.game.sounds()?.click('tick'); return; }
+    const id = inv.held;
+    if (id === 'flashlight') sim.flash.on = !sim.flash.on;
+    else if (id === 'camcorder') sim.cam.toggle();
+    else if (id) sim.useHeld();
+  }
+
   /** Jump-scare overlay: white-hot flash into blood red, whole-screen shake, and for a lethal hit a slow fade to static and black. */
   private playScare(kind: string, ms: number): void {
     const el = this.scareEl, app = document.getElementById('app')!;
@@ -302,15 +329,24 @@ export class Ui {
     const t = new Date(Date.UTC(1993, 5, 14, 3, 12, 0) + sim.time * 1000);
     if (this.game.currentSlot?.flags.speedrun) { const tot = this.game.currentSlot.playtime + sim.time; this.timeEl.textContent = `RUN ${fmtTime(tot)}`; } else this.timeEl.textContent = `${t.getUTCHours().toString().padStart(2, '0')}:${t.getUTCMinutes().toString().padStart(2, '0')}:${t.getUTCSeconds().toString().padStart(2, '0')}  SP`;
     ($('i', this.noise) as HTMLElement).style.width = `${Math.round(Math.min(1, sim.player.noise) * 100)}%`;
-    // hotbar / vitals / gear: rebuilt only when something visible changed
-    const key = [inv.hotbar.map((id) => (id ? `${id}${inv.count(id)}` : '-')).join(','), inv.selected, Math.round(st.health / 5), Math.round(st.sanity / 5), Math.round(st.hunger / 5), Math.round(st.thirst / 5), Math.round(sim.flash.battery), Math.round(sim.cam.battery / 5), sim.flash.on, sim.cam.nightVision, Math.round(st.breath / 5), Math.round(st.warmth / 5), inv.has('compass') ? Math.round(((-sim.player.yaw * 180) / Math.PI + 3600) % 360 / 15) : -1].join('|');
+    // touch: the Use / Throw buttons exist only while the held item can be used / something can be thrown
+    const held = inv.held;
+    this.game.input.touch.setContext({ UseItem: !!held && held !== 'flashlight' && held !== 'camcorder' && (!!itemDef(held).use || held === 'radio' || held === 'tripline'), Throw: sim.x.canThrow() });
+    // hotbar: the four buttons are created once and updated in place (rebuilding them under a finger lost taps)
+    const hbKey = inv.hotbar.map((id) => (id ? `${id}${inv.count(id)}` : '-')).join(',') + `|${inv.selected}`;
+    if (hbKey !== this.hotbarKey) {
+      this.hotbarKey = hbKey;
+      inv.hotbar.forEach((id, i) => {
+        const b = this.slotEls[i];
+        b.classList.toggle('on', inv.selected === i);
+        b.classList.toggle('empty', !id);
+        (b.lastChild as Text).textContent = id ? `${itemDef(id).name}${inv.count(id) > 1 ? ` ×${inv.count(id)}` : ''}` : '—';
+      });
+    }
+    // vitals / gear: rebuilt only when something visible changed
+    const key = [level.def.id, !!sim.plan.cold, sim.hungerEnabled, Math.round(st.health / 5), Math.round(st.sanity / 5), Math.round(st.hunger / 5), Math.round(st.thirst / 5), Math.round(sim.flash.battery), Math.round(sim.cam.battery / 5), sim.flash.on, sim.cam.nightVision, Math.round(st.breath / 5), Math.round(st.warmth / 5), inv.has('compass') ? Math.round(((-sim.player.yaw * 180) / Math.PI + 3600) % 360 / 15) : -1].join('|');
     if (key === this.hudKey) return;
     this.hudKey = key;
-    this.hotbar.replaceChildren(...inv.hotbar.map((id, i) => {
-      const b = h('button', { class: 'hb' + (inv.selected === i ? ' on' : ''), 'aria-label': `Slot ${i + 1}` }, h('small', {}, String(i + 1)), id ? `${itemDef(id).name}${inv.count(id) > 1 ? ` ×${inv.count(id)}` : ''}` : '—');
-      b.addEventListener('click', () => { inv.selected = i; if (inv.held) sim.useHeld(); });
-      return b;
-    }));
     const bar = (label: string, v: number) => [h('span', {}, label), h('div', { class: 'vb' + (v < 25 ? ' low' : '') }, h('i', { style: `width:${Math.round(v)}%` }))];
     this.vitals.replaceChildren(...bar('HP', st.health), ...bar('MIND', st.sanity), ...(sim.hungerEnabled && sim.diff.hungerRate > 0 ? [...bar('FOOD', st.hunger), ...bar('WATER', st.thirst)] : []), ...(st.breath < 99 ? bar('AIR', st.breath) : []), ...(sim.plan.cold ? bar('WARM', st.warmth) : []));
     this.vitals.classList.toggle('calm', st.health > 90 && st.sanity > 85 && st.hunger > 70 && st.thirst > 70);

@@ -210,6 +210,7 @@ export class LevelSim {
     // hotbar + item use + lights
     for (let i = 0; i < 4; i++) if (f.pressed[`Slot${i + 1}` as 'Slot1']) this.inv.selected = i;
     if (f.pressed.NextItem) this.inv.selected = (this.inv.selected + 1) % 4;
+    if (f.pressed.PrevItem) this.inv.selected = (this.inv.selected + 3) % 4;
     if (f.pressed.UseItem) this.useHeld();
     if (f.pressed.Flashlight && this.inv.has('flashlight')) this.flash.on = !this.flash.on;
     if (f.pressed.Camcorder && this.inv.has('camcorder')) this.cam.toggle();

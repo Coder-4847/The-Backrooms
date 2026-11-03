@@ -173,10 +173,10 @@ export class Flow {
   private hintsAtStart(scene: LevelScene): void {
     const touch = this.g.input.device === 'touch', pad = this.g.input.device === 'gamepad';
     const act = touch ? 'tap the button that appears' : pad ? 'press A' : 'press E';
-    const moveText = touch ? 'Left thumb moves, right thumb looks.' : pad ? 'Left stick moves, right stick looks.' : 'WASD to move, mouse to look.';
+    const moveText = touch ? 'Left thumb moves, right thumb looks.' : pad ? 'Left stick moves, right stick looks.' : 'WASD or arrows to move, mouse or Left/Right arrows to look.';
     if (this.inHub) { this.hint('hubgoal', `${moveText} Safe place. Go to the door ahead and ${act}.`); return; }
     setTimeout(() => this.hint('goal', `Goal: find the exit and get out. Explore, ${act} near notes, keys and doors, and read the paper scraps people left. They are clues.`), 5200);
-    this.hint('move', touch ? 'Left thumb moves, right thumb looks. Buttons appear when something is near.' : pad ? 'Left stick moves, right stick looks. A interacts, Y toggles the flashlight.' : 'WASD to move, mouse to look. G flashlight, E interact, Shift sprint, C crouch.');
+    this.hint('move', touch ? 'Left thumb moves, right thumb looks. Tap a slot to pick an item, tap it again (or USE) to use it. Buttons appear when something is near.' : pad ? 'Left stick moves, right stick looks. A interacts, Y toggles the flashlight.' : 'WASD or the arrow keys to move, mouse or Left/Right arrows to look. 1-4 or [ ] pick an item (press F to use it), G flashlight, E interact, Shift sprint, C crouch.');
     setTimeout(() => { if (scene.sim.flash.battery < 100) this.hint('battery', 'The flashlight drains. Wiggle the mouse (or shake) when it is low, and pick up batteries.'); }, 120000);
   }
 

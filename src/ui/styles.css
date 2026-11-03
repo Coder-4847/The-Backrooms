@@ -223,3 +223,5 @@ body.hiding #app::after { content: ''; position: absolute; inset: 0; pointer-eve
 @media (prefers-reduced-motion: reduce) { .heart i, .vig, .heart.extreme { animation: none; } }
 @media (max-height: 460px) { .heart { font-size: 0.68em; } }
 .rewind { z-index: 60; }
+.touch-btn[data-slot='7'] { right: 224px; bottom: 54px; }
+.touch-btn[data-slot='5'] { font-size: 15px; letter-spacing: 0.08em; font-weight: 700; background: rgba(216, 194, 122, 0.55); color: #17130a; }
