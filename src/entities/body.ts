@@ -270,7 +270,7 @@ export function buildStick(level: number, ghost = false): Body {
   const sc = new Sculptor(level, 'stick');
   const P: Proportions = { ...HUMAN, height: 2.8, shoulder: 0.15, hip: 0.062, thick: 0.6, arm: 1.0, leg: 0.96, torso: 0.5, neck: 0.16, head: 0.95, headLong: 1.35, gaunt: 0.9, finger: 2.4 };
   const r = sculptHuman(sc, P, { shirt: false, pants: false, shoes: false, hair: false, tie: false, eyes: 'void', sockets: 2.2 });
-  const b = finish(sc, { [S.Skin]: { color: 0x1d1c19, rough: 0.62, kind: 'skin', emissive: 0x0a0806, sheen: 0.4, clearcoat: 0.3 } }, level, ghost);
+  const b = finish(sc, { [S.Skin]: { color: 0x2a2620, rough: 0.8, kind: 'flesh', emissive: 0x050403, sheen: 0.2, clearcoat: 0.25 } }, level, ghost);
   const group = new Group(); group.add(b.mesh);
   // the void where its eyes should be: two pin-pricks of reflected light
   const eyeM = new MeshStandardMaterial({ color: 0x000000, roughness: 0.05, metalness: 0, transparent: ghost, opacity: ghost ? 0.4 : 1 });
@@ -350,7 +350,7 @@ export function buildHound(level: number): Body {
       if (level >= 2) for (let f = 0; f < 4; f++) { const fx = p2.x + (-0.024 + f * 0.016) * L.side; sc.sweep([V(fx, 0.03, p2.z - 0.07), V(fx, 0.02, p2.z - 0.13), V(fx, 0.008, p2.z - 0.17)], [0.008, 0.007, 0.004], { slot: S.Skin, stops: [[0, L.c], [1, L.c]], capEnd: true }, 0.35); }
     } else sc.sweep([V(p2.x, 0.12, p2.z + 0.02), V(p2.x, 0.04, p2.z - 0.06), V(p2.x, 0.025, p2.z - 0.18)], [0.04, 0.04, 0.026], { slot: S.Skin, stops: [[0, L.c], [1, L.c]], flat: [1, 0.6], up: V(0, 1, 0), capEnd: true, capStart: true }, 0.6);
   }
-  const b = finish(sc, { [S.Skin]: { color: 0x3a3631, rough: 0.55, kind: 'skin', sheen: 0.3, clearcoat: 0.25 }, [S.Hair]: { color: 0x0e0c0b, rough: 0.7, kind: 'fur', sheen: 0.6 } }, level);
+  const b = finish(sc, { [S.Skin]: { color: 0x4a4038, rough: 0.7, kind: 'flesh', sheen: 0.25, clearcoat: 0.3 }, [S.Hair]: { color: 0x0e0c0b, rough: 0.7, kind: 'fur', sheen: 0.6 } }, level);
   const group = new Group(); group.add(b.mesh);
   const eyeMat = new MeshBasicMaterial({ color: new Color(0xff5a20).multiplyScalar(4) });
   const hj = sc.jointPos(head);
@@ -432,7 +432,7 @@ export function buildHowler(level: number): Body {
   const sc = new Sculptor(level, 'howler');
   const P: Proportions = { ...HUMAN, height: 2.05, shoulder: 0.3, hip: 0.13, thick: 1.55, arm: 0.98, leg: 0.8, torso: 0.6, neck: 0.06, head: 1.25, gaunt: 0.35, finger: 1.6, belly: 0.1 };
   const r = sculptHuman(sc, P, { shirt: false, pants: false, shoes: false, hair: false, tie: false, eyes: 'void', sockets: 0 });
-  const b = finish(sc, { [S.Skin]: { color: 0x2b2a2e, rough: 0.5, kind: 'skin', sheen: 0.3, clearcoat: 0.35 } }, level);
+  const b = finish(sc, { [S.Skin]: { color: 0x3a363a, rough: 0.65, kind: 'flesh', sheen: 0.25, clearcoat: 0.35 } }, level);
   const group = new Group(); group.add(b.mesh);
   const mouthM = new MeshBasicMaterial({ color: 0x050204 });
   const hj = sc.jointPos(r.head), k = 2.05 / 1.75;
@@ -464,7 +464,7 @@ export function buildLeviathan(level: number): Body {
     mod: (t, a) => 1 + Math.max(0, Math.sin(a)) * 0.05 * Math.sin(t * 60) + Math.max(0, -Math.sin(a)) * 0.04 * Math.sin(t * 25 + a * 3),
   }, 2);
   for (let i = 0; i < 5; i++) { const z = -2 + i * 0.9; sc.sweep([V(0, 1.15 - i * 0.05, z), V(0, 1.6 - i * 0.08, z + 0.35)], [0.22 - i * 0.025, 0.02], { slot: S.Skin, stops: [[0, bones[Math.min(N - 1, 1 + Math.floor(i / 2))]], [1, bones[Math.min(N - 1, 1 + Math.floor(i / 2))]]], flat: [0.25, 1], capStart: true }, 0.5); }
-  const b = finish(sc, { [S.Skin]: { color: 0x14181c, rough: 0.28, metal: 0.1, kind: 'skin', clearcoat: 0.8 } }, level);
+  const b = finish(sc, { [S.Skin]: { color: 0x1c2228, rough: 0.35, metal: 0.1, kind: 'flesh', clearcoat: 0.8 } }, level);
   const group = new Group(), inner = new Group(); group.add(inner); inner.add(b.mesh);
   const eyeM = new MeshBasicMaterial({ color: new Color(0xc8e8ff).multiplyScalar(1.5) });
   const j0 = sc.jointPos(bones[0]);
@@ -520,7 +520,7 @@ export function buildLeech(level: number): Body {
     slot: S.Skin, stops: [[0, b0], [0.5, b1], [1, b2]], capStart: true, capEnd: true, flat: [1, 0.8], up: V(0, 1, 0),
     mod: (t) => 1 + 0.07 * Math.max(0, Math.cos(t * Math.PI * 2 * 9)),
   }, 1.4);
-  const b = finish(sc, { [S.Skin]: { color: 0x2c2418, rough: 0.2, metal: 0.05, kind: 'skin', clearcoat: 1 } }, level);
+  const b = finish(sc, { [S.Skin]: { color: 0x382e20, rough: 0.3, metal: 0.05, kind: 'flesh', clearcoat: 1 } }, level);
   const group = new Group(); group.add(b.mesh);
   return {
     group,

@@ -28,14 +28,15 @@ npm run build && npm run preview
 | Interact | E | A (✕ on PlayStation) | E button (appears when relevant) |
 | Flashlight / camcorder night vision | G / V | Y / D-pad up | ☼ |
 | Throw (distraction) | T | RB | ↗ |
-| Hotbar / next item | 1-4 / wheel | LT | tap the slot |
+| Hotbar / next item | 1-4, [ ] or Z X / wheel | LT / RT | tap the slot |
+| Use held item (drink, eat, recharge; toggles the flashlight or night vision when held) | F | X (□) | tap the selected slot again, or USE |
 | Lean / hold breath | Q R / B | D-pad / LB | |
 | Dive (in deep water) | Crouch | R3 | ▽ |
 | Backpack / journal | I or Tab / J | View / D-pad left | ▤ |
 | Pause | Esc | Menu | ❙❙ |
 | Debug console | ` (backtick) | | |
 
-Everything is rebindable under Settings > Controls. The active device is detected automatically and prompts update instantly.
+Everything is rebindable under Settings > Controls. The item you have selected is the one in your hand. Settings > Gameplay > Objective guidance sets the on-screen arrow (Arrow + hints, Hints only, Off). On older hardware set Settings > Graphics > Quality tier to Low or Potato. The active device is detected automatically and prompts update instantly.
 
 ## Seeds
 A run seed (shown in New Game, copyable) derives every level seed, layout, loot and entity ecology. Enter the same seed to replay

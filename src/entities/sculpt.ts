@@ -258,6 +258,42 @@ function skinTone(): DataTexture {
   return (skinToneTex = t);
 }
 
+/**
+ * Creature flesh (Stick, Hound, Howler...): an albedo multiplier with large dark mottling, bruise-purple and
+ * sickly-yellow blotches, thin dark veins and pale scars, plus a roughness map with wet, glistening patches.
+ * 128px and generated once, so it costs the same on Potato as on Ultra (Lambert uses the colour map too).
+ */
+let fleshTex: { map: DataTexture; rough: DataTexture } | null = null;
+function fleshMaps(): { map: DataTexture; rough: DataTexture } {
+  if (fleshTex) return fleshTex;
+  const N = 128, d = new Uint8ClampedArray(N * N * 4), r = new Uint8ClampedArray(N * N * 4);
+  const vn = (x: number, y: number, p: number, s: number) => {
+    const fx = (x / N) * p, fy = (y / N) * p, ix = Math.floor(fx), iy = Math.floor(fy), u = fx - ix, v = fy - iy;
+    const a = hash(ix % p, iy % p, s), b = hash((ix + 1) % p, iy % p, s), c = hash(ix % p, (iy + 1) % p, s), e = hash((ix + 1) % p, (iy + 1) % p, s);
+    const su = u * u * (3 - 2 * u), sv = v * v * (3 - 2 * v);
+    return a + (b - a) * su + (c - a) * sv + (a - b - c + e) * su * sv;
+  };
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const mott = vn(x, y, 4, 21) * 0.6 + vn(x, y, 8, 22) * 0.3 + vn(x, y, 32, 23) * 0.1;
+    const bruise = Math.max(0, vn(x, y, 4, 24) - 0.62) * 2.2;
+    const sick = Math.max(0, vn(x, y, 8, 25) - 0.66) * 2;
+    const vein = Math.max(0, 1 - Math.abs(vn(x, y, 8, 26) - 0.5) * 22) + Math.max(0, 1 - Math.abs(vn(x, y, 16, 27) - 0.5) * 30) * 0.6;
+    const scar = Math.max(0, 1 - Math.abs(vn(x * 0.5, y, 4, 28) - 0.5) * 40) * (vn(x, y, 4, 29) > 0.6 ? 1 : 0);
+    let k = 0.62 + mott * 0.62 - vein * 0.32 + scar * 0.35;
+    k = Math.max(0.2, k);
+    const i = (y * N + x) * 4;
+    d[i] = 255 * Math.min(1, k * (1 + bruise * 0.08 + sick * 0.1));
+    d[i + 1] = 255 * Math.min(1, k * (1 - bruise * 0.22 + sick * 0.12));
+    d[i + 2] = 255 * Math.min(1, k * (1 + bruise * 0.12 - sick * 0.3));
+    d[i + 3] = 255;
+    const wet = Math.max(0, vn(x, y, 8, 30) - 0.55) * 2.2; // roughness lives in G
+    const rv = Math.max(0.15, Math.min(1, 0.95 - wet * 0.7 + vein * 0.05));
+    r[i] = r[i + 1] = r[i + 2] = 255 * rv; r[i + 3] = 255;
+  }
+  const mk = (a: Uint8ClampedArray, srgb: boolean) => { const t = new DataTexture(a as unknown as Uint8Array, N, N); t.wrapS = t.wrapT = RepeatWrapping; t.colorSpace = srgb ? SRGBColorSpace : NoColorSpace; t.magFilter = LinearFilter; t.minFilter = LinearMipmapLinearFilter; t.generateMipmaps = true; t.needsUpdate = true; return t; };
+  return (fleshTex = { map: mk(d, true), rough: mk(r, false) });
+}
+
 /** Eyeball map: sclera with faint veins, a coloured iris and the pupil facing -z (SphereGeometry u = 0.75). */
 const eyeTex = new Map<number, CanvasTexture>();
 export function eyeTexture(iris: number): CanvasTexture {
@@ -297,23 +333,24 @@ function addSkinScatter(m: MeshStandardMaterial): void {
   m.customProgramCacheKey = () => 'skin-sss';
 }
 
-export interface SurfDef { color: number; rough?: number; metal?: number; kind?: DetailKind | 'eye' | 'glow' | 'flat'; iris?: number; emissive?: number; glow?: number; sheen?: number; clearcoat?: number; transparent?: boolean; opacity?: number }
+export interface SurfDef { color: number; rough?: number; metal?: number; kind?: DetailKind | 'eye' | 'glow' | 'flat' | 'flesh'; iris?: number; emissive?: number; glow?: number; sheen?: number; clearcoat?: number; transparent?: boolean; opacity?: number }
 
 /** Material for a slot, scaled by tier: Physical (sheen/clearcoat, detail normals) on High+, Standard on Medium, Lambert below. */
 export function surface(level: number, d: SurfDef): Material {
   const transparent = !!d.transparent, opacity = d.opacity ?? 1;
   if (d.kind === 'glow') { const m = new MeshBasicMaterial({ color: new Color(d.color).multiplyScalar(d.glow ?? 3), transparent, opacity }); m.userData.keep = true; return m; }
   if (level <= 1) {
-    const m = new MeshLambertMaterial({ color: d.color, emissive: new Color(d.emissive ?? 0), transparent, opacity });
+    const m = new MeshLambertMaterial({ color: d.color, emissive: new Color(d.emissive ?? 0), transparent, opacity, ...(d.kind === 'flesh' && typeof document !== 'undefined' ? { map: fleshMaps().map } : {}) });
     if (d.kind === 'eye') m.userData.keep = true;
     return m;
   }
-  const detail = d.kind === 'skin' || d.kind === 'cloth' || d.kind === 'fur' ? detailNormal(d.kind) : null;
-  const ns = d.kind === 'cloth' ? 0.55 : d.kind === 'fur' ? 0.8 : 0.35;
+  const flesh = d.kind === 'flesh';
+  const detail = d.kind === 'skin' || d.kind === 'cloth' || d.kind === 'fur' ? detailNormal(d.kind) : flesh ? detailNormal('skin') : null;
+  const ns = d.kind === 'cloth' ? 0.55 : d.kind === 'fur' ? 0.8 : flesh ? 0.7 : 0.35;
   const base = {
     color: d.color, roughness: d.rough ?? 0.7, metalness: d.metal ?? 0, emissive: new Color(d.emissive ?? 0), transparent, opacity,
     ...(detail ? { normalMap: detail, normalScale: new Vector2(ns, ns) } : {}),
-    ...(d.kind === 'skin' ? { map: skinTone() } : d.kind === 'eye' && d.iris !== undefined && typeof document !== 'undefined' ? { map: eyeTexture(d.iris) } : {}),
+    ...(flesh ? { map: fleshMaps().map, roughnessMap: fleshMaps().rough } : d.kind === 'skin' ? { map: skinTone() } : d.kind === 'eye' && d.iris !== undefined && typeof document !== 'undefined' ? { map: eyeTexture(d.iris) } : {}),
   };
   let m: MeshStandardMaterial;
   if (level >= 3) {
@@ -321,11 +358,12 @@ export function surface(level: number, d: SurfDef): Material {
       ...base,
       // sheen tinted from the base colour (a fixed tint turns dark skin red under a flashlight)
       sheen: Math.min(0.35, d.sheen ?? (d.kind === 'cloth' ? 0.6 : d.kind === 'skin' ? 0.15 : 0)), sheenRoughness: 0.65,
-      sheenColor: new Color(d.color).lerp(new Color(d.kind === 'skin' ? 0xc89080 : 0xffffff), 0.25),
-      clearcoat: d.clearcoat ?? (d.kind === 'eye' ? 1 : d.kind === 'skin' ? 0.12 : 0), clearcoatRoughness: d.kind === 'eye' ? 0.05 : 0.45,
+      sheenColor: new Color(d.color).lerp(new Color(d.kind === 'skin' || flesh ? 0xc89080 : 0xffffff), 0.25),
+      clearcoat: d.clearcoat ?? (d.kind === 'eye' ? 1 : d.kind === 'skin' ? 0.12 : 0), clearcoatRoughness: d.kind === 'eye' ? 0.05 : flesh ? 0.3 : 0.45,
+      ...(flesh ? { clearcoatRoughnessMap: fleshMaps().rough } : {}),
     });
   } else m = new MeshStandardMaterial(base);
   if (d.kind === 'eye') m.userData.keep = true;
-  if (d.kind === 'skin' && !transparent) addSkinScatter(m);
+  if ((d.kind === 'skin' || flesh) && !transparent) addSkinScatter(m);
   return m;
 }

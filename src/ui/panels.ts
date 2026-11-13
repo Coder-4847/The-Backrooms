@@ -49,14 +49,14 @@ export function inventoryPanel(game: Game, close: () => void): HTMLElement {
       grid.append(b);
     }
     clear(hot);
-    inv.hotbar.forEach((id, i) => hot.append(h('button', { class: 'hslot' + (inv.selected === i ? ' on' : ''), onclick: () => { if (sel && id !== sel.id) { inv.hotbar[i] = sel.id; } inv.selected = i; paint(); } }, h('small', {}, String(i + 1)), id ? itemDef(id).name : '—', id && inv.count(id) > 1 ? ` ×${inv.count(id)}` : '')));
+    inv.hotbar.forEach((id, i) => hot.append(h('button', { class: 'hslot' + (inv.selected === i ? ' on' : ''), onclick: () => { if (sel && id !== sel.id) inv.assign(i, sel.id); inv.selected = i; paint(); } }, h('small', {}, String(i + 1)), id ? itemDef(id).name : '—', id && inv.count(id) > 1 ? ` ×${inv.count(id)}` : '')));
     clear(detail);
     if (sel && inv.stacks.includes(sel)) {
       const d = itemDef(sel.id);
       detail.append(h('h3', {}, d.name), h('p', {}, d.desc), h('p', { class: 'muted' }, `${d.w}×${d.h} cells · ${d.weight.toFixed(1)} kg each`),
         h('div', { class: 'btn-row' },
-          d.use ? h('button', { class: 'btn small primary', onclick: () => { const i = inv.hotbar.indexOf(sel!.id); inv.selected = i >= 0 ? i : inv.selected; if (i < 0) inv.hotbar[inv.selected] = sel!.id; sim.useHeld(); if (!inv.has(sel!.id)) sel = null; paint(); } }, 'Use') : null,
-          h('button', { class: 'btn small danger', onclick: () => { inv.remove(sel!.id, 1); if (!inv.has(sel!.id)) sel = null; paint(); } }, 'Drop one')));
+          d.use ? h('button', { class: 'btn small primary', onclick: () => { sim.useHeld(sel!.id); if (!inv.has(sel!.id)) sel = null; paint(); } }, 'Use') : null,
+          d.essential ? h('small', { class: 'muted' }, 'You need this. It cannot be dropped.') : h('button', { class: 'btn small danger', onclick: () => { inv.remove(sel!.id, 1); if (!inv.has(sel!.id)) sel = null; paint(); } }, 'Drop one')));
     } else detail.append(h('p', { class: 'muted' }, 'Select an item. Drag to rearrange. Click a hotbar slot to assign the selected item.'));
     stats.textContent = `Weight ${inv.weight.toFixed(1)} kg${inv.weightFactor < 1 ? ` · stamina recovery ×${inv.weightFactor.toFixed(2)}` : ''} · Flashlight ${sim.flash.battery.toFixed(0)}% · Camcorder ${sim.cam.battery.toFixed(0)}%`;
   };

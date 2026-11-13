@@ -154,6 +154,9 @@ h4 { margin: 10px 0 2px; color: var(--accent); font-weight: 500; }
 .hb { min-width: 76px; padding: 4px 8px; background: rgba(12, 11, 8, 0.6); border: 1px solid var(--line); font-size: 0.7em; text-align: center; cursor: pointer; }
 .hb.on { border-color: var(--accent); color: var(--accent); }
 .hb small { display: block; opacity: 0.6; }
+.held { position: absolute; left: 0; right: 0; bottom: calc(env(safe-area-inset-bottom) + 64px); text-align: center; font-size: 0.78em; letter-spacing: 0.06em; color: var(--accent); text-shadow: 0 1px 4px #000; transition: opacity 0.6s; pointer-events: none; }
+.held.dim { opacity: 0.35; }
+.held:empty { display: none; }
 .vitals { position: absolute; left: calc(env(safe-area-inset-left) + 22px); bottom: calc(env(safe-area-inset-bottom) + 34px); display: grid; grid-template-columns: auto 90px; gap: 3px 8px; font-size: 0.65em; opacity: 0.7; transition: opacity 0.6s; }
 .vitals.calm { opacity: 0.18; }
 .vitals .vb { height: 3px; background: rgba(255, 255, 255, 0.12); align-self: center; }
@@ -208,6 +211,7 @@ body.hiding #app::after { content: ''; position: absolute; inset: 0; pointer-eve
 .scare { position: absolute; inset: 0; z-index: 40; pointer-events: none; opacity: 0; }
 .scare.on { opacity: 1; }
 .scare.light, .scare.jolt { background: radial-gradient(ellipse at center, rgba(255, 255, 255, 0) 30%, rgba(160, 0, 0, 0.55) 100%); animation: scare-light 0.55s ease-out both; }
+.scare.soft { background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 45%, rgba(60, 0, 0, 0.35) 100%); animation: scare-light 0.6s ease-out both; }
 .scare.jolt { animation-duration: 0.35s; background: radial-gradient(ellipse at center, rgba(255, 255, 255, 0) 55%, rgba(0, 0, 0, 0.55) 100%); }
 .scare.heavy { background: radial-gradient(ellipse at center, rgba(255, 255, 255, 0) 20%, rgba(150, 0, 0, 0.7) 100%); animation: scare-heavy 1.2s ease-out both; }
 .scare.lethal { background: radial-gradient(ellipse at center, rgba(255, 255, 255, 0) 12%, rgba(140, 0, 0, 0.85) 100%); animation: scare-heavy 1.6s ease-out both; }
@@ -233,3 +237,9 @@ body.hiding #app::after { content: ''; position: absolute; inset: 0; pointer-eve
 .level-card em { font-style: normal; letter-spacing: 0.3em; opacity: 0.55; font-size: 0.8em; }
 @keyframes level-card-in { from { opacity: 0; letter-spacing: 0.6em; filter: blur(6px); } to { opacity: 1; filter: blur(0); } }
 @media (max-height: 460px) { .level-card { top: 22%; } .level-card b { font-size: 1.5em; } }
+
+/* objective guide arrow (Settings > Gameplay > Objective guidance) */
+.guide { position: absolute; left: 50%; top: calc(env(safe-area-inset-top) + 52px); transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 2px; pointer-events: none; opacity: 0.75; text-shadow: 0 1px 4px #000; }
+.guide[hidden] { display: none; }
+.guide i { font-style: normal; font-size: 1.3em; color: var(--accent); transition: transform 0.12s linear; display: block; }
+.guide b { font-weight: normal; font-size: 0.68em; letter-spacing: 0.1em; }

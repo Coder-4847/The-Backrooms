@@ -88,3 +88,32 @@ export function bearingWords(px: number, pz: number, yaw: number, target: Vec2):
   if (deg < 155) return `behind you, to the ${side}`;
   return 'behind you';
 }
+
+/**
+ * Guide point for the HUD arrow: the next doorway on a walkable route (open doors only) from the player's room
+ * to the room holding `target`, or the target itself once you are in its room. Pointing at the next door instead
+ * of straight at the target means the arrow never tells you to walk into a wall.
+ */
+export function guidePoint(sim: LevelSim, target: Vec2): Vec2 {
+  const plan = sim.plan;
+  const goal = sim.ew.nav.roomAt(target.x, target.z);
+  const from = sim.room;
+  if (goal < 0 || goal === from) return target;
+  const passable = (cid: number) => { const d = sim.doors.get(cid); return !d || d.open; };
+  const prev = new Map<number, number>();
+  const q = [from]; const seen = new Set([from]);
+  for (let i = 0; i < q.length; i++) {
+    const r = q[i];
+    for (const c of plan.connections) {
+      const n = c.a === r ? c.b : c.b === r ? c.a : -1;
+      if (n < 0 || seen.has(n) || (!passable(c.id) && n !== goal)) continue;
+      seen.add(n); prev.set(n, c.id); q.push(n);
+      if (n === goal) {
+        let cur = n, conn = c.id;
+        while (true) { const cid = prev.get(cur)!; const cc = plan.connections[cid]; const back = cc.a === cur ? cc.b : cc.a; conn = cid; if (back === from) break; cur = back; }
+        return plan.connections[conn].door;
+      }
+    }
+  }
+  return target;
+}

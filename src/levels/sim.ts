@@ -48,6 +48,7 @@ export type SimEvent =
   | { type: 'exit' }
   | { type: 'hide'; on: boolean }
   | { type: 'use'; item: string }
+  | { type: 'nouse'; item: string; reason: string }
   | { type: 'hit'; entity: Entity; damage: number; /** this hit killed the player */ lethal: boolean }
   | { type: 'tell'; entity: Entity }
   | { type: 'death' }
@@ -68,7 +69,7 @@ export interface SimSnapshot { collected: string[]; keys: string[]; openDoors: n
 export const REACH = 1.9;
 const plan_cold = (s: { plan: LevelPlan }): boolean => !!s.plan.cold;
 
-const lockHint = (lock: string): string => lock.startsWith('fuse') ? 'Dead transformer bay: needs a fuse' : lock.startsWith('pry') ? 'Stuck door: needs a crowbar' : lock.startsWith('valves') ? 'Sealed: the valves must be aligned' : lock.startsWith('rope') ? 'Chasm: needs a grappling hook' : lock.startsWith('seq') ? 'Rack lock: servers must be rebooted in order' : lock.startsWith('breaker') ? 'Dead section: flip its breaker' : 'Locked';
+export const lockHint = (lock: string): string => lock.startsWith('fuse') ? 'Dead transformer bay: needs a fuse' : lock.startsWith('pry') ? 'Stuck door: needs a crowbar' : lock.startsWith('valves') ? 'Sealed: the valves must be aligned' : lock.startsWith('rope') ? 'Chasm: needs a grappling hook' : lock.startsWith('seq') ? 'Rack lock: servers must be rebooted in order' : lock.startsWith('breaker') ? 'Dead section: flip its breaker' : 'Locked: find the key (a glowing key somewhere off the main path)';
 
 export class LevelSim {
   readonly world = new StaticWorld();
@@ -209,7 +210,7 @@ export class LevelSim {
     for (let i = 0; i < 4; i++) if (f.pressed[`Slot${i + 1}` as 'Slot1']) this.inv.selected = i;
     if (f.pressed.NextItem) this.inv.selected = (this.inv.selected + 1) % 4;
     if (f.pressed.PrevItem) this.inv.selected = (this.inv.selected + 3) % 4;
-    if (f.pressed.UseItem) this.useHeld();
+    if (f.pressed.UseItem) this.useSelected();
     if (f.pressed.Flashlight && this.inv.has('flashlight')) this.flash.on = !this.flash.on;
     if (f.pressed.Camcorder && this.inv.has('camcorder')) this.cam.toggle();
     this.flash.addShake(Math.hypot(f.lookX, f.lookY) * 60);
@@ -263,6 +264,8 @@ export class LevelSim {
     const p = this.player;
     const live = this.ew.entities.filter((e) => e.def.damage > 0).length;
     if (live >= 3 + Math.round(this.diff.ambush)) return;
+    // Level 0 is where you learn the game: no ambushes in the first three minutes, and never more than one extra hunter
+    if (this.plan.levelId === 'level0' && this.diff.ambush < 2.5 && (this.time < 180 || this.ew.entities.some((e) => e.data.ambushUntil !== undefined))) return;
     const kinds = [...new Set(this.plan.entitySlots.map((s) => s.entity ?? '').filter((id) => id && ENTITIES[id]?.damage > 0))];
     const id = kinds.length ? kinds[this.ew.rng.int(0, kinds.length - 1)] : 'hound';
     const spots = this.plan.rooms.map((r) => ({ x: r.x + r.w / 2, z: r.z + r.d / 2, kind: r.kind })).filter((q) => q.kind !== 'start' && q.kind !== 'supply' && (() => { const d = Math.hypot(q.x - p.x, q.z - p.z); return d > 13 && d < 30 && this.world.segmentBlocked(p.x, p.z, q.x, q.z); })());
@@ -339,16 +342,23 @@ export class LevelSim {
     return false;
   }
 
-  /** Use the held hotbar item: consumables apply their effect, lights get placed. */
-  useHeld(): boolean {
+  /** The Use button / tapping the selected slot: tools toggle (flashlight, camcorder night vision), everything else is used. */
+  useSelected(): boolean {
     const id = this.inv.held;
-    if (!id) return false;
+    if (id === 'flashlight') { this.flash.on = !this.flash.on; return true; }
+    if (id === 'camcorder') { this.cam.toggle(); return true; }
+    return this.useHeld();
+  }
+
+  /** Use the held hotbar item: consumables apply their effect, lights get placed. */
+  useHeld(id: string | null = this.inv.held): boolean {
+    if (!id || !this.inv.has(id)) return false;
     const special = this.x.useSpecial(id);
-    if (special !== null) return special;
+    if (special !== null) { if (!special && id === 'radio') this.emit({ type: 'nouse', item: id, reason: 'The radio is still recharging.' }); return special; }
     const d = itemDef(id), u = d.use;
-    if (!u) return false;
+    if (!u) { this.emit({ type: 'nouse', item: id, reason: `${d.name} can't be used on its own.` }); return false; }
     const p = this.player;
-    if (u.battery) { if (this.flash.battery > 95) return false; this.flash.recharge(u.battery); }
+    if (u.battery) { if (this.flash.battery > 95) { this.emit({ type: 'nouse', item: id, reason: 'The flashlight is already full.' }); return false; } this.flash.recharge(u.battery); }
     if (u.glow) {
       if (id === 'flare') { this.flares.push({ x: p.x, z: p.z, t: u.glow }); this.noise.emit(this.room, p.x, p.z, 0.3); this.emit({ type: 'flare', x: p.x, z: p.z }); }
       else { this.glows.push({ x: p.x, z: p.z, t: u.glow }); this.emit({ type: 'glow', x: p.x, z: p.z }); }

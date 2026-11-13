@@ -69,7 +69,17 @@ export class Inventory {
       s.n -= take; left -= take;
       if (s.n === 0) this.stacks.splice(this.stacks.indexOf(s), 1);
     }
+    // used the last one: free its hotbar slot so the bar never shows an item you no longer have
+    if (!this.has(id)) this.hotbar = this.hotbar.map((h) => (h === id ? null : h));
     return true;
+  }
+
+  /** Put an item on hotbar slot `i`. If it was already on another slot the two slots swap (never duplicated). */
+  assign(i: number, id: string): void {
+    const j = this.hotbar.indexOf(id);
+    if (j === i) return;
+    if (j >= 0) this.hotbar[j] = this.hotbar[i];
+    this.hotbar[i] = id;
   }
 
   /** Move a stack to a new cell (drag and drop). */

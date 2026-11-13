@@ -138,6 +138,9 @@ export class Gfx {
     this.composer = this.renderPass = this.gtao = this.bloom = this.vhs = this.exposure = null;
   }
 
+  /** Settings read every frame (post uniforms, FOV): picked up without rebuilding the pipeline. */
+  useSettings(s: Settings): void { this.settings = s; }
+
   /** Use the scene's look (fog, tint) for post uniforms. */
   private lens = { tint: [1, 1, 1] as [number, number, number], sat: 1 };
   private lookGrade: LevelLook['grade'] | null = null;
