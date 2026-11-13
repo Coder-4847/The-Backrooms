@@ -342,7 +342,8 @@ export class Ui {
     const sim = level.sim, st = sim.stats, inv = sim.inv;
     const s = sim.player.stamina;
     ($('i', this.stamina) as HTMLElement).style.width = `${s}%`;
-    this.stamina.classList.toggle('low', s < 25);
+    this.stamina.classList.toggle('low', s < 25 && !sim.player.adrenaline);
+    this.stamina.classList.toggle('adrenaline', sim.player.adrenaline);
     const p = level.prompt;
     const o = level.objective;
     const big = sim.time < 14; // the first seconds of a level: make it hard to miss

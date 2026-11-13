@@ -159,7 +159,7 @@ export function assignEcology(plan: LevelPlan, eco: Ecology[]): void {
   plan.entitySlots = plan.entitySlots.filter((s) => s.entity);
 }
 
-/** Water rooms: never in the start, supply, exit or waypoint rooms; flooded rooms are off-path dead ends only. */
+/** Water rooms: never in the start, supply, exit or waypoint rooms; flooded rooms are off-path side rooms only (optional detours). */
 export function addWater(plan: LevelPlan, rng: Rng, o: NonNullable<LevelSpec['water']>): void {
   const wp = new Set(plan.waypoints.map((w) => w.room));
   const onPath = new Set(plan.criticalPath);
@@ -167,7 +167,7 @@ export function addWater(plan: LevelPlan, rng: Rng, o: NonNullable<LevelSpec['wa
   for (const r of rng.shuffle([...plan.rooms])) {
     if (r.kind === 'start' || r.kind === 'supply' || r.kind === 'exit' || wp.has(r.id)) continue;
     const roll = rng.next();
-    if (!onPath.has(r.id) && r.kind === 'dead' && roll < o.flooded) out.push({ room: r.id, depth: 'flooded', sludge: o.sludge });
+    if (!onPath.has(r.id) && (r.kind === 'dead' || r.kind === 'room') && roll < o.flooded) out.push({ room: r.id, depth: 'flooded', sludge: o.sludge });
     else if (roll < o.flooded + o.swim) out.push({ room: r.id, depth: 'swim', sludge: o.sludge });
     else if (roll < o.flooded + o.swim + o.wade) out.push({ room: r.id, depth: 'wade', sludge: o.sludge });
   }

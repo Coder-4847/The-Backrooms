@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { makeLab } from '../src/entities/lab';
+import { chaseCap } from '../src/entities/ai';
 import { Director } from '../src/systems/director';
 import { ENTITIES } from '../src/entities/defs';
 import { DIFFICULTIES, DIFFICULTY_ORDER } from '../src/core/difficulty';
@@ -87,14 +88,25 @@ describe('Hound (entity lab)', () => {
     lab.run(3);
     expect(dist(h, { x: 6, z: 26 })).toBeLessThan(d0 - 3);
   });
-  it('growls (tell) before charging, then chases faster than a walking player', () => {
+  it('spotting you from a distance: a short growl, then it chases straight away (no stand-off)', () => {
     const lab = makeLab();
     const h = lab.ew.spawn('hound', 15, 15);
     lab.player.x = 5; lab.player.z = 15; lab.player.yaw = -Math.PI / 2; face(h, lab.player);
     let tell = -1, chaseAt = -1;
     lab.run(6, (t) => { if (h.state === 'tell' && tell < 0) tell = t; if (h.state === 'chase' && chaseAt < 0) chaseAt = t; });
-    expect(tell).toBeGreaterThan(0); expect(chaseAt - tell).toBeGreaterThanOrEqual(Math.max(0.38, ENTITIES.hound.tell * DIFFICULTIES.normal.tellTime) - 0.1);
+    expect(tell).toBeGreaterThan(0);
+    expect(chaseAt - tell).toBeLessThanOrEqual(0.6);
     expect(h.def.run).toBeGreaterThan(2.3); // faster than the player's walk
+  });
+  it('never runs faster than the player can sprint (you can always outrun it)', () => {
+    for (const d of ['easy', 'normal', 'hard', 'nightmare'] as const) {
+      const lab = makeLab({ difficulty: d });
+      const h = lab.ew.spawn('hound', 25, 15); lab.player.x = 5; lab.player.z = 15; face(h, lab.player);
+      h.state = 'chase'; h.target = { x: 5, z: 15 };
+      const x0 = h.x; lab.run(1);
+      expect(Math.abs(h.x - x0)).toBeLessThan(4.0); // player sprint is 4 m/s
+      expect(chaseCap(DIFFICULTIES[d].entitySpeed)).toBeLessThan(4.0);
+    }
   });
   it('a hit never lands before the tell finished', () => {
     const lab = makeLab({ difficulty: 'hard' });

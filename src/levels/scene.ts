@@ -12,7 +12,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { LevelSim, lockHint, type SimEvent, type SimOptions, type SimSnapshot } from './sim';
 import { EntityVisuals } from './entityVisuals';
 import { buildBody, buildStick, type Body } from '../entities/body';
-import { planClues, type Clue } from '../gen/clues';
+import { pinNotes, planClues, type Clue } from '../gen/clues';
 import { bearingWords, guidePoint, levelObjective, type Objective } from './objective';
 import { Jumpscare } from './scare';
 import { buildClues, loadHandFont, type ClueVisuals } from './clueArt';
@@ -87,6 +87,7 @@ export class LevelScene {
   private overlays = new Map<string, Object3D>();
   private itemMeshes = new Map<string, Object3D>();
   private itemKit: ItemModelKit | null = null;
+  private notePins = new Map<string, { yaw: number; y: number }>();
   /** Fake volumetrics (Medium and up): haze under each lamp, and the flashlight beam. */
   private shafts: LampShafts | null = null;
   private beam: FlashBeam | null = null;
@@ -142,6 +143,7 @@ export class LevelScene {
     const tier = this.tier, st = svc.settings.value;
     progress(0.02, 'Generating layout');
     this.plan = def.generate(this.seed, { difficulty: this.difficulty, ...this.opts.genParams });
+    this.notePins = pinNotes(this.plan); // readable notes hang on walls instead of littering the floor
     this.sim = new LevelSim(this.plan, this.difficulty, { seed: this.seed, intensity: def.intensity, scare: st.scare, hungerEnabled: st.hunger, ...this.opts.sim });
     if (this.opts.snapshot) this.sim.applySnapshot(this.opts.snapshot);
     const planId = await svc.pool.setPlan(this.plan);
@@ -304,26 +306,34 @@ export class LevelScene {
     const haloTex = haloTexture(), haloGeo = new PlaneGeometry(1, 1);
     const haloKey = new MeshBasicMaterial({ map: haloTex, color: new Color(0xffc040).multiplyScalar(1.6), transparent: true, depthWrite: false, blending: AdditiveBlending });
     const haloLoot = new MeshBasicMaterial({ map: haloTex, color: new Color(0xbfd8e8).multiplyScalar(0.7), transparent: true, depthWrite: false, blending: AdditiveBlending });
-    const haloNote = new MeshBasicMaterial({ map: haloTex, color: new Color(0xfff0c0).multiplyScalar(0.5), transparent: true, depthWrite: false, blending: AdditiveBlending });
-    this.extras.push(noteMat, paper, haloTex, haloGeo, haloKey, haloLoot, haloNote);
+    this.extras.push(noteMat, paper, haloTex, haloGeo, haloKey, haloLoot);
     for (const it of plan.items) {
       if (sim.collected.has(it.id)) continue; // already taken (checkpoint restore) or scarce on this difficulty
       const g = new Group();
       const important = it.kind === 'key' || it.kind === 'tool';
+      const pin = this.notePins.get(it.id);
       if (it.kind === 'note') {
-        const m = new Mesh(paper, noteMat); m.rotation.y = it.pos.x; g.add(m);
-        g.position.set(it.pos.x, 0.03, it.pos.z); g.userData.note = true;
+        // pinned to the wall at reading height (or, in open rooms, lying flat on the ground)
+        const m = new Mesh(paper, noteMat);
+        if (pin) { m.rotation.set(Math.PI / 2, 0, 0); g.rotation.y = pin.yaw; g.position.set(it.pos.x, pin.y, it.pos.z); m.rotation.z = (it.pos.x * 7.3 % 1 - 0.5) * 0.3; }
+        else { m.rotation.y = it.pos.x; g.position.set(it.pos.x, 0.012, it.pos.z); }
+        g.add(m); g.userData.note = true;
       } else {
+        // lying on the floor where someone dropped it: resting on its side, turned at random, never floating
         const model = kit.build(it.item);
-        model.scale.setScalar(important ? 3.2 : 2.6);
-        model.rotation.x = -0.35;
-        g.add(model); g.userData.model = model;
-        g.position.set(it.pos.x, 0.6, it.pos.z);
+        model.scale.setScalar(important ? 2.6 : 2.4);
+        model.rotation.y = (it.pos.x * 3.7 + it.pos.z * 1.3) % (Math.PI * 2);
+        model.updateMatrixWorld(true);
+        const bb = new Box3().setFromObject(model);
+        model.position.y = -bb.min.y + 0.004;
+        g.add(model);
+        g.position.set(it.pos.x, 0, it.pos.z);
+        // a soft glow on the floor around it so it reads from across the room (no real light: no shader recompile)
+        const halo = new Mesh(haloGeo, important ? haloKey : haloLoot);
+        halo.rotation.x = -Math.PI / 2; halo.position.y = 0.006;
+        halo.scale.setScalar(important ? 1.1 : 0.7); halo.renderOrder = 3;
+        g.add(halo); g.userData.halo = halo;
       }
-      // halo: a camera-facing glow disc (no real light: lights would cost a shader recompile)
-      const halo = new Mesh(haloGeo, it.kind === 'note' ? haloNote : important ? haloKey : haloLoot);
-      halo.scale.setScalar(it.kind === 'note' ? 0.7 : important ? 0.9 : 0.55); halo.renderOrder = 3;
-      g.add(halo); g.userData.halo = halo;
       scene.add(g); this.itemMeshes.set(it.id, g);
     }
     // hiding spots: lockers and desks
@@ -627,11 +637,8 @@ export class LevelScene {
     const itemFar = this.tier.level <= 1 ? 16 : 30; // pickups are several small meshes: skip the far ones (draw calls on weak GPUs)
     for (const m of this.itemMeshes.values()) {
       m.visible = Math.abs(m.position.x - cam.position.x) + Math.abs(m.position.z - cam.position.z) < itemFar;
-      if (!m.visible) continue;
-      (m.userData.halo as Object3D).quaternion.copy(cam.quaternion);
-      if (m.userData.note) continue;
-      m.position.y = 0.6 + Math.sin(this.time * 2 + m.position.x) * 0.05;
-      (m.userData.model as Object3D).rotation.y += dt * 0.9;
+      const halo = m.userData.halo as Object3D | undefined;
+      if (m.visible && halo) halo.scale.setScalar((halo.userData.s ??= halo.scale.x) * (0.9 + 0.1 * Math.sin(this.time * 2.2 + m.position.x)));
     }
     this.itemKit?.pulse(this.time);
     this.wpLeds.forEach((l, i) => { if (!this.sim.activatedWaypoints.has(i)) l.color.set(0xff2010).multiplyScalar(Math.sin(this.time * 5) > 0 ? 5 : 0.1); });

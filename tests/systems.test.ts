@@ -120,7 +120,7 @@ describe('Level 0 in the real simulation', () => {
     expect(sim.ew.entities.filter((e) => e.def.id === 'stick').length).toBeGreaterThanOrEqual(1); // plus a roaming extra on Normal
     expect(sim.ew.entities.filter((e) => e.def.id === 'hound').length).toBeGreaterThanOrEqual(2);
     expect(plan.hides!.length).toBeGreaterThan(5);
-    expect(plan.items.filter((i) => i.kind === 'note').length).toBe(8); // 6 scattered + the Anchor hint + the secret hint
+    expect(plan.items.filter((i) => i.kind === 'note').length).toBe(6); // 4 story notes + the Anchor hint + the secret hint
     for (const n of plan.items.filter((i) => i.kind === 'note')) expect(NOTES[n.item]).toBeDefined();
     expect(LEVEL_NOTES('level0').length).toBeGreaterThanOrEqual(6);
   });

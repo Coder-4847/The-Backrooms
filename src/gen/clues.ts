@@ -25,8 +25,8 @@ const ENTITY_CLUES: Record<string, [string, Doodle]> = {
   stick: ["DON'T LET THE TALL ONE SEE YOU", 'tall'],
   wraith: ["DON'T LET THE TALL ONE SEE YOU", 'tall'],
   stalker: ['IF IT FOLLOWS, DONT TURN AROUND', 'tall'],
-  hound: ['WALK. THEY HEAR YOU RUN', 'dog'],
-  crawler: ['WALK. THEY HEAR YOU RUN', 'dog'],
+  hound: ['THEY HEAR YOU RUN. IF THEY SEE YOU, RUN ANYWAY', 'dog'],
+  crawler: ['THEY HEAR YOU RUN. IF THEY SEE YOU, RUN ANYWAY', 'dog'],
   howler: ["IT'S BLIND. STAY QUIET", 'ear'],
   lurker: ["IT'S BLIND. STAY QUIET", 'ear'],
   smiler: ["DON'T STARE AT THE SMILE. KEEP LIGHTS ON", 'smile'],
@@ -74,11 +74,7 @@ function spotIn(plan: LevelPlan, r: Room, rng: Rng): { x: number; y: number; z: 
     if (doors.some((d) => Math.hypot(d.x - p.x, d.z - p.z) < 1.4)) continue;
     if ((plan.hides ?? []).some((h) => Math.hypot(h.pos.x - p.x, h.pos.z - p.z) < 1)) continue;
     if ((plan.props ?? []).some((q) => Math.abs(q.x - p.x) < q.w / 2 + 0.3 && Math.abs(q.z - p.z) < q.d / 2 + 0.3)) continue;
-    // sometimes it fell off the wall and lies on the floor below
-    if (rng.next() < 0.25) {
-      const nx = side === 2 ? 1 : side === 3 ? -1 : 0, nz = side === 0 ? 1 : side === 1 ? -1 : 0;
-      return { x: p.x + nx * 0.35, y: 0.012, z: p.z + nz * 0.35, yaw: p.yaw + (rng.next() - 0.5) * 1.2, wall: false };
-    }
+    rng.next(); // (kept so seeded layouts stay stable: scraps used to fall to the floor; now they all stay pinned up)
     return { x: p.x, y: 1.25 + rng.next() * 0.35, z: p.z, yaw: p.yaw, wall: true };
   }
   return { x: r.x + r.w / 2, y: 0.012, z: r.z + r.d / 2, yaw: rng.next() * 6.28, wall: false };
@@ -125,5 +121,33 @@ export function planClues(plan: LevelPlan, max = 8): Clue[] {
   const water = (plan.water ?? []).find((w) => w.depth !== 'wade');
   if (water) add(neighbours(water.room)[0] ?? water.room, 'HOLD YOUR BREATH. GO FAST', 'waves');
   if (plan.items.some((i) => i.item === 'almond_water')) add(path[Math.min(path.length - 1, 2)] ?? plan.spawn.room, 'DRINK THE ALMOND WATER', 'bottle');
+  return out;
+}
+
+/**
+ * Pin every readable note to a wall of its room at reading height (they used to lie on the floor, and the floor
+ * of a busy level looked littered). Moves the note's position in the plan, so the interaction point moves with it;
+ * returns the wall facing (yaw) per note id for the renderer. Open rooms (no walls) keep floor notes. Pure + seeded.
+ */
+export function pinNotes(plan: LevelPlan): Map<string, { yaw: number; y: number }> {
+  const rng = new Rng((plan.seed ^ 0x9e7e5) >>> 0);
+  const out = new Map<string, { yaw: number; y: number }>();
+  const taken: { x: number; z: number }[] = [];
+  for (const it of plan.items) {
+    if (it.kind !== 'note') continue;
+    const r = plan.rooms[it.room];
+    if (!r) continue;
+    let best: { x: number; y: number; z: number; yaw: number; wall: boolean } | null = null;
+    for (let k = 0; k < 6; k++) {
+      const s = spotIn(plan, r, rng);
+      if (!s.wall) { best = best ?? s; continue; }
+      if (taken.some((q) => Math.hypot(q.x - s.x, q.z - s.z) < 1.2)) continue;
+      best = s; break;
+    }
+    if (!best || !best.wall) continue;
+    it.pos = { x: best.x, z: best.z };
+    taken.push(it.pos);
+    out.set(it.id, { yaw: best.yaw, y: 1.2 + rng.next() * 0.3 });
+  }
   return out;
 }

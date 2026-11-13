@@ -240,6 +240,8 @@ export class LevelSim {
     this.x.update(dt, f);
     if (this.x.secretDone && !this.x.secretFired) { this.x.secretFired = true; this.emit({ type: 'secret' }); }
     this.ew.update(dt, this.ctx);
+    // adrenaline: while anything is hunting you, sprinting never tires you out (you can always run for it)
+    p.adrenaline = this.ew.entities.some((e) => e.def.damage > 0 && e.state !== 'flee' && this.ew.isHunting(e.state) && Math.hypot(e.x - p.x, e.z - p.z) < 40);
 
     // stats, director, hallucinations
     const threat = this.ew.threatLevel(p.x, p.z);
@@ -383,7 +385,7 @@ export class LevelSim {
 
   /** Death/respawn at the last checkpoint: player moves back, entities re-roll, stats partially recover. */
   respawnPlayer(): void {
-    this.hidden = null; this.dead = false;
+    this.hidden = null; this.dead = false; this.player.adrenaline = false;
     this.stats.revive();
     this.player.place(this.respawn.x, this.respawn.z, this.respawn.yaw);
     this.ew = new EntityWorld(this.plan, this.world, (this.opts.seed ?? this.plan.seed) + this.deaths * 7919);

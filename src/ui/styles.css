@@ -86,8 +86,8 @@ select { background: var(--panel); border: 1px solid var(--line); padding: 8px 1
 .bar.low i { background: var(--rec); }
 .prompt { position: absolute; left: 0; right: 0; bottom: 22%; text-align: center; font-size: 1.05em; letter-spacing: 0.06em; }
 .stats { position: absolute; right: calc(env(safe-area-inset-right) + 22px); top: calc(env(safe-area-inset-top) + 16px); margin: 0; text-align: right; font-size: 0.75em; color: var(--accent); }
-.toasts { position: absolute; top: 26%; left: 0; right: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; }
-.toast { max-width: min(78vw, 620px); text-align: center; background: var(--panel); border: 1px solid var(--line); padding: 8px 16px; font-family: var(--mono); font-size: 0.9em; animation: fade 0.25s both; transition: opacity 0.5s; }
+.toasts { position: absolute; top: calc(env(safe-area-inset-top) + 100px); left: 0; right: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; }
+.toast { max-width: min(70vw, 520px); text-align: center; background: var(--panel); border: 1px solid var(--line); padding: 6px 14px; font-family: var(--mono); font-size: 0.8em; animation: fade 0.25s both; transition: opacity 0.5s; }
 .toast.warn { border-color: var(--rec); }
 .toast.out { opacity: 0; }
 .captions { position: absolute; left: 0; right: 0; bottom: 9%; display: flex; flex-direction: column; align-items: center; gap: 4px; pointer-events: none; }
@@ -193,7 +193,7 @@ body.hiding #app::after { content: ''; position: absolute; inset: 0; pointer-eve
 .objective small { font-size: 0.7em; letter-spacing: 0.2em; color: var(--accent); border: 1px solid var(--accent); padding: 1px 6px; flex: none; }
 .objective em { display: block; font-style: normal; opacity: 0.7; font-size: 0.9em; }
 .objective.big { font-size: 0.95em; opacity: 1; background: rgba(0, 0, 0, 0.4); padding: 6px 10px; border-left: 3px solid var(--accent); }
-@media (max-height: 460px) { .objective { top: calc(env(safe-area-inset-top) + 40px); font-size: 0.74em; } .objective.big { font-size: 0.8em; } .toasts { top: 34%; } }
+@media (max-height: 460px) { .objective { top: calc(env(safe-area-inset-top) + 40px); font-size: 0.74em; } .objective.big { font-size: 0.8em; } .toasts { top: calc(env(safe-area-inset-top) + 84px); } }
 @media (orientation: portrait) { .touch-cluster { bottom: calc(env(safe-area-inset-bottom) + 84px); } .touch-interact { bottom: calc(env(safe-area-inset-bottom) + 84px + 250px * var(--touch-size, 1)); } }
 
 /* ---- horror: heart rate, pressure vignette, jump-scare overlay ---- */
@@ -243,3 +243,7 @@ body.hiding #app::after { content: ''; position: absolute; inset: 0; pointer-eve
 .guide[hidden] { display: none; }
 .guide i { font-style: normal; font-size: 1.3em; color: var(--accent); transition: transform 0.12s linear; display: block; }
 .guide b { font-weight: normal; font-size: 0.68em; letter-spacing: 0.1em; }
+
+/* adrenaline: something is hunting you and sprint never tires */
+.bar.adrenaline i { background: #e0482c; box-shadow: 0 0 8px rgba(224, 72, 44, 0.8); animation: adrenaline 0.5s ease-in-out infinite alternate; }
+@keyframes adrenaline { from { opacity: 0.75; } to { opacity: 1; } }
