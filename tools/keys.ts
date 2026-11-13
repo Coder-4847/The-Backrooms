@@ -35,6 +35,19 @@ try {
     const inHand = () => page.evaluate(() => { const L = (window as any).__game.level; return { holding: L.viewmodel.holding, held: L.sim.inv.held }; });
     let hh = await inHand(); for (let i = 0; i < 60 && hh.holding !== hh.held; i++) { await page.waitForTimeout(150); hh = await inHand(); }
     check(`${mode}: the hand shows the selected item`, hh.holding === hh.held && hh.held !== 'flashlight', JSON.stringify(hh));
+    // only ONE hand on screen: the title-screen backdrop's hand used to stay on the shared camera, overlapping the real one
+    const hands = await page.evaluate(() => { const c = (window as any).__game.gfx.camera; return c.children.filter((o: any) => o.userData.viewmodel).length; });
+    check(`${mode}: exactly one hand on the camera`, hands === 1, `hands ${hands}`);
+    if (mode === 'laptop') {
+      // left click uses the held item (with the pointer locked)
+      const before = await page.evaluate(() => { const g = (window as any).__game, s = g.level.sim; s.inv.add('bandage'); s.inv.assign(2, 'bandage'); s.inv.selected = 2; s.stats.health = 40; g.input.locked = true; return s.inv.count('bandage'); });
+      await page.waitForTimeout(200);
+      await page.evaluate(() => { const c = (window as any).__game.gfx.renderer.domElement; c.dispatchEvent(new MouseEvent('mousedown', { button: 0, bubbles: true })); });
+      await page.waitForFunction((n) => (window as any).__game.level.sim.inv.count('bandage') < n, before, { timeout: 15000 }).catch(() => {});
+      await page.evaluate(() => { window.dispatchEvent(new MouseEvent('mouseup', { button: 0 })); (window as any).__game.input.locked = false; });
+      const after = await page.evaluate(() => (window as any).__game.level.sim.inv.count('bandage'));
+      check('laptop: left click uses the held item', after === before - 1, `${before} -> ${after}`);
+    }
     await page.keyboard.press('BracketRight'); await page.waitForTimeout(250); check(`${mode}: ] selects the next slot`, (await st()).sel === 3);
     await page.keyboard.press('BracketRight'); await page.waitForTimeout(250); check(`${mode}: ] wraps to slot 1`, (await st()).sel === 0);
     await page.keyboard.press('BracketLeft'); await page.waitForTimeout(250); check(`${mode}: [ wraps back to slot 4`, (await st()).sel === 3);

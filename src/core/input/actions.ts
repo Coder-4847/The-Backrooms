@@ -18,7 +18,7 @@ export const DEFAULT_BINDINGS: Bindings = {
   Sprint: { kb: ['ShiftLeft'], pad: [PAD.LS] },
   Crouch: { kb: ['ControlLeft', 'KeyC'], pad: [PAD.RS] },
   Interact: { kb: ['KeyE'], pad: [PAD.A] },
-  UseItem: { kb: ['KeyF'], pad: [PAD.X] },
+  UseItem: { kb: ['KeyF', 'Mouse0'], pad: [PAD.X] },
   Flashlight: { kb: ['KeyG'], pad: [PAD.Y] },
   Camcorder: { kb: ['KeyV'], pad: [PAD.Up] },
   Inventory: { kb: ['Tab', 'KeyI'], pad: [PAD.Back] },
@@ -50,6 +50,8 @@ export function sanitizeBindings(raw: unknown): Bindings {
     if (Array.isArray(r.kb) && r.kb.every((k) => typeof k === 'string') && !(a === 'NextItem' && r.kb.length === 0)) out[a].kb = r.kb.slice(0, 3);
     if (Array.isArray(r.pad) && r.pad.every((n) => Number.isInteger(n))) out[a].pad = r.pad.slice(0, 3);
   }
+  // left click used to do nothing: older saved bindings get it on Use item (unless it was bound to something else)
+  if (!ACTIONS.some((a) => out[a].kb.includes('Mouse0'))) out.UseItem.kb = [...out.UseItem.kb, 'Mouse0'].slice(0, 3);
   return out;
 }
 
@@ -69,7 +71,7 @@ export function rebind(b: Bindings, action: Action, device: 'kb' | 'pad', code: 
 
 const KB_NAMES: Record<string, string> = {
   ShiftLeft: 'Shift', ShiftRight: 'Shift', ControlLeft: 'Ctrl', ControlRight: 'Ctrl', Space: 'Space', Escape: 'Esc',
-  Backquote: '`', Tab: 'Tab', ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→', Enter: 'Enter', BracketLeft: '[', BracketRight: ']', PageUp: 'PgUp', PageDown: 'PgDn',
+  Backquote: '`', Tab: 'Tab', ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→', Enter: 'Enter', BracketLeft: '[', BracketRight: ']', PageUp: 'PgUp', PageDown: 'PgDn', Mouse0: 'Left click', Mouse2: 'Right click',
 };
 export function keyName(code: string): string {
   if (KB_NAMES[code]) return KB_NAMES[code];

@@ -82,9 +82,18 @@ export class Viewmodel {
     this.group.add(this.inner);
     this.group.position.set(0.085, -0.085, -0.16);
     this.group.renderOrder = 5;
+    this.group.userData.viewmodel = true; // marks it so a scene can evict another scene's hand from the shared camera
   }
 
-  attachTo(cam: Camera): void { cam.add(this.group); }
+  /**
+   * Make this the only hand on the camera. The camera is shared by every LevelScene (the menu backdrop stays alive
+   * behind the title screen), so another scene's hand must be taken off or both draw on top of each other.
+   */
+  attachTo(cam: Camera): void {
+    if (this.group.parent === cam) return;
+    for (const ch of [...cam.children]) if (ch.userData.viewmodel && ch !== this.group) cam.remove(ch);
+    cam.add(this.group);
+  }
 
   /** Item id currently drawn in the hand (null while empty-handed). */
   get holding(): string | null { return this.dropped < 0.98 ? this.current : null; }
@@ -98,6 +107,8 @@ export class Viewmodel {
       g = this.kit.build(id);
       g.traverse((o: Object3D) => { o.castShadow = false; o.frustumCulled = false; o.renderOrder = 5; });
       if (id === 'flashlight') this.lens = g.getObjectByName('lens') as Mesh;
+      // bottles and cans sit further forward in the grip so the label and neck show past the fingers
+      if (['almond_water', 'bottled_water', 'dirty_water', 'bottle', 'distraction', 'can', 'canned_food', 'cracker', 'bandage'].includes(id)) g.position.set(0, 0.012, -0.05);
       g.visible = false; this.inner.add(g); this.props.set(id, g);
     }
     return g;
