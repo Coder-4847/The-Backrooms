@@ -14,7 +14,7 @@ export interface Settings {
   tier: TierSetting; resolutionScale: number; fpsCap: string; fov: number; drawDistance: number;
   shadowQuality: 'off' | 'low' | 'high'; textureQuality: 'low' | 'medium' | 'high'; antialias: boolean;
   bloom: boolean; ssao: boolean; vhs: boolean; vhsIntensity: number; grain: boolean; scanlines: boolean;
-  chromatic: boolean; vignette: boolean; dust: boolean; batterySaver: boolean; showFps: boolean;
+  chromatic: boolean; vignette: boolean; dust: boolean; volumetrics: boolean; batterySaver: boolean; showFps: boolean;
   // audio
   master: number; music: number; sfx: number; ambience: number; voice: number;
   // controls
@@ -60,6 +60,7 @@ export const SCHEMA: SettingDef[] = [
   tog('chromatic', 'Chromatic aberration', 'Graphics', true),
   tog('vignette', 'Vignette', 'Graphics', true),
   tog('dust', 'Floating dust', 'Graphics', true),
+  tog('volumetrics', 'Light shafts and flashlight beam', 'Graphics', true, 'Medium quality and above. Turn off for a little more speed.'),
   tog('batterySaver', 'Battery saver', 'Graphics', false, '30 fps, lower resolution. Good for phones.'),
   tog('showFps', 'Show performance stats', 'Graphics', false),
 

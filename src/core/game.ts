@@ -149,7 +149,7 @@ export class Game implements Services {
     if (key === 'reduceShake' && this.level) this.level.sim.player.reduceShake = s.reduceShake;
     if (key === 'holdToggleCrouch' && this.level) this.level.sim.player.holdCrouchToggle = s.holdToggleCrouch === 'toggle';
     if (key === 'holdToggleSprint' && this.level) this.level.sim.player.holdSprintToggle = s.holdToggleSprint === 'toggle';
-    if (['tier', 'textureQuality', 'shadowQuality', 'drawDistance', 'dust'].includes(key) && this.level && performance.now() - this.lastGfxToast > 8000) { this.lastGfxToast = performance.now(); bus.emit('toast', { text: 'Some graphics changes take full effect at the next level or checkpoint reload.' }); }
+    if (['tier', 'textureQuality', 'shadowQuality', 'drawDistance', 'dust', 'volumetrics'].includes(key) && this.level && performance.now() - this.lastGfxToast > 8000) { this.lastGfxToast = performance.now(); bus.emit('toast', { text: 'Some graphics changes take full effect at the next level or checkpoint reload.' }); }
   }
 
   /** Audio can only start after a user gesture: create lazily on first call from a click. */

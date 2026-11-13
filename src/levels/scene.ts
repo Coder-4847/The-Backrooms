@@ -27,6 +27,7 @@ import { Dust } from '../render/atmosphere';
 import { MaterialLibrary } from '../render/materials';
 import { Viewmodel } from '../render/viewmodel';
 import { ItemModelKit } from '../render/itemModels';
+import { FlashBeam, LampShafts } from '../render/beams';
 import { bus } from '../core/events';
 import type { Services } from '../core/services';
 import type { InputFrame } from '../core/input/logic';
@@ -36,7 +37,7 @@ import type { Surface } from '../audio/sounds';
 import type { TierDef } from '../render/quality';
 import { itemDef } from '../systems/items';
 
-interface ChunkVis { group: Group; lamps: InstancedMesh | null; lampDefs: ChunkData['lights'] }
+interface ChunkVis { group: Group; lamps: InstancedMesh | null; shafts: InstancedMesh | null; lampDefs: ChunkData['lights'] }
 
 const LAMP_GEO = new BoxGeometry(LAMP_W, 0.022, LAMP_D);
 /** Flashlight intensity (candela); ceiling lamps are 9. */
@@ -86,6 +87,9 @@ export class LevelScene {
   private overlays = new Map<string, Object3D>();
   private itemMeshes = new Map<string, Object3D>();
   private itemKit: ItemModelKit | null = null;
+  /** Fake volumetrics (Medium and up): haze under each lamp, and the flashlight beam. */
+  private shafts: LampShafts | null = null;
+  private beam: FlashBeam | null = null;
   private doorMeshes = new Map<number, Mesh>();
   private propMeshes: InstancedMesh[] = [];
   private waterMeshes: Mesh[] = [];
@@ -175,6 +179,11 @@ export class LevelScene {
     this.lights = new LightPool(this.scene, tier.lights, shadowLights, tier.shadowMap);
     this.lights.reduceFlicker = st.reduceFlicker;
     if (tier.dust > 0 && st.dust) { this.dust = new Dust(tier.dust, look.dust); this.dust.addTo(this.scene); }
+    if (tier.level >= 2 && st.volumetrics) {
+      this.shafts = new LampShafts(LAMP_W, LAMP_D, look.lampColor, def.look.fogDensity > 0.045 ? 0.15 : 0.1);
+      this.beam = new FlashBeam();
+      this.scene.add(this.beam.mesh); // in the scene before prewarm, so its shader compiles behind the loading screen
+    }
 
     // flashlight (spot light parented to the scene, positioned each frame at the camera)
     this.flash = new SpotLight(0xfff1d6, FLASH_CD, 26, 0.5, 0.55, 1.6);
@@ -448,24 +457,29 @@ export class LevelScene {
       if (mk === 'decal') mesh.renderOrder = 2;
       group.add(mesh);
     }
-    let lamps: InstancedMesh | null = null;
+    let lamps: InstancedMesh | null = null, shafts: InstancedMesh | null = null;
     const defs = c.lights;
     if (defs.length) {
       lamps = new InstancedMesh(LAMP_GEO, this.lib.lamp, defs.length);
       defs.forEach((d, i) => { this.tmpM.makeTranslation(d.x, d.y + LAMP_DY, d.z); lamps!.setMatrixAt(i, this.tmpM); lamps!.setColorAt(i, this.tmpC.setScalar(d.broken ? 0.02 : 1)); });
       lamps.frustumCulled = false;
       group.add(lamps);
+      if (this.shafts) {
+        shafts = this.shafts.build(defs.map((d) => ({ x: d.x, y: d.y + LAMP_DY, z: d.z })));
+        defs.forEach((d, i) => shafts!.setColorAt(i, this.tmpC.setScalar(d.broken ? 0 : 1)));
+        group.add(shafts);
+      }
       this.lights.setSources([...this.lights.all, ...defs]);
     }
     this.scene.add(group);
-    this.chunks.set(c.key, { group, lamps, lampDefs: defs });
+    this.chunks.set(c.key, { group, lamps, shafts, lampDefs: defs });
   }
 
   private removeChunk(key: string): void {
     const v = this.chunks.get(key);
     if (!v) return;
     v.group.traverse((o) => { if ((o as Mesh).isMesh && !(o as InstancedMesh).isInstancedMesh) (o as Mesh).geometry.dispose(); });
-    v.lamps?.dispose();
+    v.lamps?.dispose(); v.shafts?.dispose();
     v.group.removeFromParent();
     this.chunks.delete(key);
     const gone = new Set(v.lampDefs);
@@ -570,6 +584,7 @@ export class LevelScene {
     this.surface.uBakeDirect.value = this.darkDirect * (1 - dark);
     this.surface.uBakeBounce.value = this.darkBounce * (1 - 0.92 * dark);
     this.lib.lamp.color.copy(this.lampBase).multiplyScalar(1 - 0.96 * dark);
+    this.shafts?.setLevel((1 - dark) * (this.lights.burstT > 0 ? 0.6 : 1));
     this.dreadBed?.set(Math.max(this.stress, dark * 0.9));
     this.dust?.update(this.time, cam.position.x, cam.position.z);
     this.props?.update(this.time);
@@ -599,12 +614,14 @@ export class LevelScene {
     if (this.viewmodel?.lensWorld(this.flash.position)) this.flash.position.addScaledVector(this.fwd, 0.02);
     else { this.flash.position.copy(cam.position).addScaledVector(this.fwd, 0.12); this.flash.position.y -= 0.22; }
     this.flashTarget.position.copy(cam.position).addScaledVector(this.fwd, 6);
+    this.beam?.update(this.flash.position, this.flashTarget.position, Math.min(1.2, flashOut) * (this.sim.cam.nightVision ? 0.3 : 0.05) * (this.plan.dark ? 1.6 : 1), this.scene);
     // flicker lamp emissive per instance (only flickering ones)
     for (const v of this.chunks.values()) {
       if (!v.lamps) continue;
       let dirty = false;
-      v.lampDefs.forEach((d, i) => { if (d.flicker) { v.lamps!.setColorAt(i, this.tmpC.setScalar(Math.max(0.03, flickerAt(d, this.time, svc.settings.value.reduceFlicker)))); dirty = true; } });
+      v.lampDefs.forEach((d, i) => { if (d.flicker) { const k = flickerAt(d, this.time, svc.settings.value.reduceFlicker); v.lamps!.setColorAt(i, this.tmpC.setScalar(Math.max(0.03, k))); v.shafts?.setColorAt(i, this.tmpC.setScalar(k)); dirty = true; } });
       if (dirty && v.lamps.instanceColor) v.lamps.instanceColor.needsUpdate = true;
+      if (dirty && v.shafts?.instanceColor) v.shafts.instanceColor.needsUpdate = true;
     }
     // bobbing items, blinking waypoint LEDs
     const itemFar = this.tier.level <= 1 ? 16 : 30; // pickups are several small meshes: skip the far ones (draw calls on weak GPUs)
@@ -664,8 +681,9 @@ export class LevelScene {
     if (changed) setBake(this.surface, bakeLighting(this.plan, this.bakeLamps));
     for (const v of this.chunks.values()) {
       let dirty = false;
-      v.lampDefs.forEach((d, i) => { if (set.has(d.room) && d.broken) { d.broken = false; v.lamps?.setColorAt(i, this.tmpC.setScalar(1)); dirty = true; } });
+      v.lampDefs.forEach((d, i) => { if (set.has(d.room) && d.broken) { d.broken = false; v.lamps?.setColorAt(i, this.tmpC.setScalar(1)); v.shafts?.setColorAt(i, this.tmpC.setScalar(1)); dirty = true; } });
       if (dirty && v.lamps?.instanceColor) v.lamps.instanceColor.needsUpdate = true;
+      if (dirty && v.shafts?.instanceColor) v.shafts.instanceColor.needsUpdate = true;
     }
   }
 
@@ -675,6 +693,7 @@ export class LevelScene {
     document.body.classList.remove('hiding');
     if (this.scare) { this.scare.onDone = null; this.svc.gfx.fovKick = 0; }
     this.ev.dispose(); this.viewmodel?.dispose();
+    this.beam?.dispose(); this.shafts?.dispose();
     this.warm.forEach((b) => b.dispose()); this.warm = [];
     this.clueVis?.dispose();
     for (const h of this.humHandles) h.stop(0.3);

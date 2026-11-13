@@ -5,7 +5,7 @@
  */
 import {
   AgXToneMapping, HalfFloatType, PCFSoftShadowMap, PerspectiveCamera, Scene, SRGBColorSpace,
-  Vector2, WebGLRenderer, WebGLRenderTarget,
+  Vector2, WebGLRenderer, WebGLRenderTarget, type Line, type Material, type Mesh, type Object3D, type Points,
 } from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
@@ -111,6 +111,18 @@ export class Gfx {
     if (tier.ssao && s.ssao) {
       this.gtao = new GTAOPass(this.scene, this.camera, w, h);
       this.gtao.output = GTAOPass.OUTPUT.Default;
+      // keep glow effects (halos, light shafts, the flashlight beam: transparent, no depth write) out of the AO
+      // depth/normal pass too, not just points and lines: otherwise they show up as solid black shapes
+      const ao = this.gtao as unknown as { scene: Scene; _visibilityCache: Object3D[]; _overrideVisibility: () => void };
+      ao._overrideVisibility = function (this: typeof ao) {
+        const cache = this._visibilityCache;
+        this.scene.traverse((o) => {
+          if (!o.visible) return;
+          const m = (o as Mesh).material as Material | Material[] | undefined;
+          const fx = !!m && (Array.isArray(m) ? m : [m]).every((x) => x.transparent && !x.depthWrite);
+          if ((o as Points).isPoints || (o as Line).isLine || fx) { o.visible = false; cache.push(o); }
+        });
+      };
       this.gtao.blendIntensity = 1;
       this.gtao.updateGtaoMaterial({ radius: 0.7, distanceExponent: 1.6, thickness: 1.2, scale: 1.1, samples: tier.level >= 4 ? 16 : 8, distanceFallOff: 1, screenSpaceRadius: false });
       this.gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: tier.level >= 4 ? 16 : 8 });
