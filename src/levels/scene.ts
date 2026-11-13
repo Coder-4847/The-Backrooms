@@ -5,15 +5,15 @@
  */
 import {
   AmbientLight, Box3, PointLight, TorusGeometry, PlaneGeometry, CanvasTexture, SRGBColorSpace, BoxGeometry, BufferAttribute, BufferGeometry, Color, CylinderGeometry, FogExp2, Group, InstancedMesh, LineBasicMaterial,
-  LineSegments, Matrix4, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, PMREMGenerator, Scene, SpotLight, Vector3, CubeCamera, WebGLCubeRenderTarget, HalfFloatType, type Material,
+  LineSegments, Matrix4, AdditiveBlending, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, PMREMGenerator, Scene, SpotLight, Vector3, CubeCamera, WebGLCubeRenderTarget, HalfFloatType, type Material,
 } from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { LevelSim, type SimEvent, type SimOptions, type SimSnapshot } from './sim';
+import { LevelSim, lockHint, type SimEvent, type SimOptions, type SimSnapshot } from './sim';
 import { EntityVisuals } from './entityVisuals';
 import { buildBody, buildStick, type Body } from '../entities/body';
 import { planClues, type Clue } from '../gen/clues';
-import { bearingWords, levelObjective, type Objective } from './objective';
+import { bearingWords, guidePoint, levelObjective, type Objective } from './objective';
 import { Jumpscare } from './scare';
 import { buildClues, loadHandFont, type ClueVisuals } from './clueArt';
 import { SceneFx } from './fx';
@@ -26,6 +26,8 @@ import { LightPool, flickerAt } from '../render/lights';
 import { Dust } from '../render/atmosphere';
 import { MaterialLibrary } from '../render/materials';
 import { Viewmodel } from '../render/viewmodel';
+import { ItemModelKit } from '../render/itemModels';
+import { FlashBeam, LampShafts } from '../render/beams';
 import { bus } from '../core/events';
 import type { Services } from '../core/services';
 import type { InputFrame } from '../core/input/logic';
@@ -35,7 +37,7 @@ import type { Surface } from '../audio/sounds';
 import type { TierDef } from '../render/quality';
 import { itemDef } from '../systems/items';
 
-interface ChunkVis { group: Group; lamps: InstancedMesh | null; lampDefs: ChunkData['lights'] }
+interface ChunkVis { group: Group; lamps: InstancedMesh | null; shafts: InstancedMesh | null; lampDefs: ChunkData['lights'] }
 
 const LAMP_GEO = new BoxGeometry(LAMP_W, 0.022, LAMP_D);
 /** Flashlight intensity (candela); ceiling lamps are 9. */
@@ -51,6 +53,16 @@ function flashCookie(): CanvasTexture {
   g.fillStyle = grad; g.beginPath(); g.arc(128, 128, 126, 0, Math.PI * 2); g.fill();
   g.globalCompositeOperation = 'multiply';
   for (let i = 0; i < 40; i++) { const a = (i * 2.399) % (Math.PI * 2), r = 20 + ((i * 37) % 90); g.fillStyle = `rgba(150,150,150,${0.06 + (i % 5) * 0.02})`; g.beginPath(); g.arc(128 + Math.cos(a) * r, 128 + Math.sin(a) * r, 6 + (i % 7) * 3, 0, Math.PI * 2); g.fill(); }
+  const t = new CanvasTexture(c); t.colorSpace = SRGBColorSpace;
+  return t;
+}
+/** Soft radial glow used behind pickups. */
+function haloTexture(): CanvasTexture {
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const g = c.getContext('2d')!;
+  const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  grad.addColorStop(0, 'rgba(255,255,255,0.55)'); grad.addColorStop(0.35, 'rgba(255,255,255,0.18)'); grad.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grad; g.fillRect(0, 0, 64, 64);
   const t = new CanvasTexture(c); t.colorSpace = SRGBColorSpace;
   return t;
 }
@@ -73,7 +85,11 @@ export class LevelScene {
   private flash!: SpotLight;
   private flashTarget = new Object3D();
   private overlays = new Map<string, Object3D>();
-  private itemMeshes = new Map<string, Mesh>();
+  private itemMeshes = new Map<string, Object3D>();
+  private itemKit: ItemModelKit | null = null;
+  /** Fake volumetrics (Medium and up): haze under each lamp, and the flashlight beam. */
+  private shafts: LampShafts | null = null;
+  private beam: FlashBeam | null = null;
   private doorMeshes = new Map<number, Mesh>();
   private propMeshes: InstancedMesh[] = [];
   private waterMeshes: Mesh[] = [];
@@ -110,6 +126,8 @@ export class LevelScene {
   /** What to do next (HUD line) and a bearing hint that only appears once the player has stalled for a while. */
   objective: Objective | null = null;
   objectiveHint: string | null = null;
+  /** World point the HUD guide arrow aims at (next doorway towards the goal), null when guidance is off. */
+  guide: { x: number; z: number } | null = null;
   private objBestDist = 99; private objKey = ''; private objProgressAt = 0; private objLoot = 0;
   private clues: Clue[] = [];
   private clueVis: ClueVisuals | null = null;
@@ -161,6 +179,11 @@ export class LevelScene {
     this.lights = new LightPool(this.scene, tier.lights, shadowLights, tier.shadowMap);
     this.lights.reduceFlicker = st.reduceFlicker;
     if (tier.dust > 0 && st.dust) { this.dust = new Dust(tier.dust, look.dust); this.dust.addTo(this.scene); }
+    if (tier.level >= 2 && st.volumetrics) {
+      this.shafts = new LampShafts(LAMP_W, LAMP_D, look.lampColor, def.look.fogDensity > 0.045 ? 0.15 : 0.1);
+      this.beam = new FlashBeam();
+      this.scene.add(this.beam.mesh); // in the scene before prewarm, so its shader compiles behind the loading screen
+    }
 
     // flashlight (spot light parented to the scene, positioned each frame at the camera)
     this.flash = new SpotLight(0xfff1d6, FLASH_CD, 26, 0.5, 0.55, 1.6);
@@ -271,17 +294,37 @@ export class LevelScene {
       scene.add(this.props.group);
       sim.world.add('props', this.props.colliders);
     }
-    const keyMat = new MeshBasicMaterial({ color: new Color(0xffc040).multiplyScalar(3) });
-    const lootMat = new MeshStandardMaterial({ color: 0x9fc4d8, roughness: 0.4 });
-    const noteMat = new MeshStandardMaterial({ color: 0xe8e2c8, roughness: 0.9, emissive: new Color(0x2a2616) });
-    const box = new BoxGeometry(0.22, 0.22, 0.22), paper = new BoxGeometry(0.3, 0.02, 0.21);
-    this.extras.push(keyMat, lootMat, noteMat, box, paper);
+    // pickups: the real item model (what you will hold), enlarged a little, turning slowly over a soft halo so it
+    // reads from across a room. Keys and tools glow gold; notes lie flat on the floor with a faint paper glow.
+    const kit = new ItemModelKit(tier.level);
+    this.itemKit = kit;
+    this.extras.push(kit);
+    const noteMat = new MeshStandardMaterial({ color: 0xe8e2c8, roughness: 0.9, emissive: new Color(0x3a3420) });
+    const paper = new BoxGeometry(0.3, 0.02, 0.21);
+    const haloTex = haloTexture(), haloGeo = new PlaneGeometry(1, 1);
+    const haloKey = new MeshBasicMaterial({ map: haloTex, color: new Color(0xffc040).multiplyScalar(1.6), transparent: true, depthWrite: false, blending: AdditiveBlending });
+    const haloLoot = new MeshBasicMaterial({ map: haloTex, color: new Color(0xbfd8e8).multiplyScalar(0.7), transparent: true, depthWrite: false, blending: AdditiveBlending });
+    const haloNote = new MeshBasicMaterial({ map: haloTex, color: new Color(0xfff0c0).multiplyScalar(0.5), transparent: true, depthWrite: false, blending: AdditiveBlending });
+    this.extras.push(noteMat, paper, haloTex, haloGeo, haloKey, haloLoot, haloNote);
     for (const it of plan.items) {
       if (sim.collected.has(it.id)) continue; // already taken (checkpoint restore) or scarce on this difficulty
-      const m = new Mesh(it.kind === 'note' ? paper : box, it.kind === 'key' ? keyMat : it.kind === 'note' ? noteMat : lootMat);
-      m.position.set(it.pos.x, it.kind === 'note' ? 0.05 : 0.6, it.pos.z);
-      if (it.kind === 'note') m.rotation.y = it.pos.x;
-      scene.add(m); this.itemMeshes.set(it.id, m);
+      const g = new Group();
+      const important = it.kind === 'key' || it.kind === 'tool';
+      if (it.kind === 'note') {
+        const m = new Mesh(paper, noteMat); m.rotation.y = it.pos.x; g.add(m);
+        g.position.set(it.pos.x, 0.03, it.pos.z); g.userData.note = true;
+      } else {
+        const model = kit.build(it.item);
+        model.scale.setScalar(important ? 3.2 : 2.6);
+        model.rotation.x = -0.35;
+        g.add(model); g.userData.model = model;
+        g.position.set(it.pos.x, 0.6, it.pos.z);
+      }
+      // halo: a camera-facing glow disc (no real light: lights would cost a shader recompile)
+      const halo = new Mesh(haloGeo, it.kind === 'note' ? haloNote : important ? haloKey : haloLoot);
+      halo.scale.setScalar(it.kind === 'note' ? 0.7 : important ? 0.9 : 0.55); halo.renderOrder = 3;
+      g.add(halo); g.userData.halo = halo;
+      scene.add(g); this.itemMeshes.set(it.id, g);
     }
     // hiding spots: lockers and desks
     const lockerG = new BoxGeometry(0.6, 1.9, 0.55), deskG = new BoxGeometry(1.2, 0.75, 0.7);
@@ -414,24 +457,29 @@ export class LevelScene {
       if (mk === 'decal') mesh.renderOrder = 2;
       group.add(mesh);
     }
-    let lamps: InstancedMesh | null = null;
+    let lamps: InstancedMesh | null = null, shafts: InstancedMesh | null = null;
     const defs = c.lights;
     if (defs.length) {
       lamps = new InstancedMesh(LAMP_GEO, this.lib.lamp, defs.length);
       defs.forEach((d, i) => { this.tmpM.makeTranslation(d.x, d.y + LAMP_DY, d.z); lamps!.setMatrixAt(i, this.tmpM); lamps!.setColorAt(i, this.tmpC.setScalar(d.broken ? 0.02 : 1)); });
       lamps.frustumCulled = false;
       group.add(lamps);
+      if (this.shafts) {
+        shafts = this.shafts.build(defs.map((d) => ({ x: d.x, y: d.y + LAMP_DY, z: d.z })));
+        defs.forEach((d, i) => shafts!.setColorAt(i, this.tmpC.setScalar(d.broken ? 0 : 1)));
+        group.add(shafts);
+      }
       this.lights.setSources([...this.lights.all, ...defs]);
     }
     this.scene.add(group);
-    this.chunks.set(c.key, { group, lamps, lampDefs: defs });
+    this.chunks.set(c.key, { group, lamps, shafts, lampDefs: defs });
   }
 
   private removeChunk(key: string): void {
     const v = this.chunks.get(key);
     if (!v) return;
     v.group.traverse((o) => { if ((o as Mesh).isMesh && !(o as InstancedMesh).isInstancedMesh) (o as Mesh).geometry.dispose(); });
-    v.lamps?.dispose();
+    v.lamps?.dispose(); v.shafts?.dispose();
     v.group.removeFromParent();
     this.chunks.delete(key);
     const gone = new Set(v.lampDefs);
@@ -468,6 +516,8 @@ export class LevelScene {
     else if (e.type === 'hit') this.scare.start(e.entity, Jumpscare.kindFor(e.damage, e.lethal));
     else if (e.type === 'death') { if (this.scare.active) this.scare.onDone = () => this.onDeath?.(); else this.onDeath?.(); }
     else if (e.type === 'custom') this.onCustom?.(e.ref);
+    else if (e.type === 'use') this.viewmodel?.kick();
+    else if (e.type === 'nouse') bus.emit('toast', { text: e.reason, kind: 'warn' });
     else if (e.type === 'pickup') {
       const m = this.itemMeshes.get(e.item.id);
       if (m) { m.removeFromParent(); this.itemMeshes.delete(e.item.id); }
@@ -479,7 +529,7 @@ export class LevelScene {
       bus.emit('toast', { text: 'Door unlocked' });
       if (a && s) s.creak(a.flat('sfx', 0.3));
     } else if (e.type === 'locked') {
-      bus.emit('toast', { text: `Locked. Needs ${e.lock}`, kind: 'warn' });
+      bus.emit('toast', { text: `${lockHint(e.lock)}.`, kind: 'warn' });
       s?.click('back');
     } else if (e.type === 'checkpoint') {
       this.wpLeds[e.index]?.color.set(0x30ff60).multiplyScalar(4);
@@ -507,8 +557,12 @@ export class LevelScene {
     if (o.key !== this.objKey) { this.objKey = o.key; this.objBestDist = o.dist; this.objProgressAt = sim.time; }
     else if (o.dist < this.objBestDist || loot !== this.objLoot) { this.objBestDist = Math.min(o.dist, this.objBestDist); this.objProgressAt = sim.time; }
     this.objLoot = loot;
-    // stalled: nothing new for ~100 s of play -> say roughly which way the next step lies
-    this.objectiveHint = o.target && sim.time - this.objProgressAt > 100 ? `Lost? The next step is ${bearingWords(p.x, p.z, p.yaw, o.target)}.` : null;
+    // stalled: nothing new for a while -> say roughly which way the next step lies (sooner on the tutorial level)
+    const mode = this.svc.settings.value.guidance;
+    const stall = this.def.id === 'level0' ? 35 : 50;
+    const g = o.target ? guidePoint(sim, o.target) : null;
+    this.guide = mode === 'arrow' ? g : null;
+    this.objectiveHint = mode !== 'off' && g && sim.time - this.objProgressAt > stall ? `Lost? Head ${bearingWords(p.x, p.z, p.yaw, g)} (${Math.round(Math.hypot(g.x - p.x, g.z - p.z))} m).` : null;
   }
 
   /** Per rendered frame. */
@@ -530,6 +584,7 @@ export class LevelScene {
     this.surface.uBakeDirect.value = this.darkDirect * (1 - dark);
     this.surface.uBakeBounce.value = this.darkBounce * (1 - 0.92 * dark);
     this.lib.lamp.color.copy(this.lampBase).multiplyScalar(1 - 0.96 * dark);
+    this.shafts?.setLevel((1 - dark) * (this.lights.burstT > 0 ? 0.6 : 1));
     this.dreadBed?.set(Math.max(this.stress, dark * 0.9));
     this.dust?.update(this.time, cam.position.x, cam.position.z);
     this.props?.update(this.time);
@@ -537,9 +592,10 @@ export class LevelScene {
     const flashOut = this.sim.inv.has('flashlight') && this.sim.flash.on ? this.sim.flash.output(this.time) : 0;
     this.flash.intensity = FLASH_CD * flashOut; // never toggle `visible` on lights: it recompiles every shader
     this.flash.shadow.autoUpdate = flashOut > 0.01;
-    const hasFlash = this.sim.inv.has('flashlight');
     cam.updateMatrixWorld();
-    this.viewmodel?.update(dt, hasFlash && !this.sim.hidden, flashOut, p.yaw, p.pitch, Math.min(1, p.speed / 3), this.time);
+    // the hand shows whatever is selected on the hotbar (lowered while hiding or during a scare)
+    const held = this.sim.hidden || this.scare.active ? null : this.sim.inv.held;
+    this.viewmodel?.update(dt, held, flashOut, p.yaw, p.pitch, Math.min(1, p.speed / 3), this.time);
     this.ev.sync(this.sim.ew, this.time, dt);
     this.fx.update(dt, cam, flashOut > 0.4);
     // blizzard gusts (Arctic) thicken the fog; wrong portraits follow your position with their gaze
@@ -554,18 +610,30 @@ export class LevelScene {
     // flare + glowstick light (fixed light count: no shader recompiles)
     const fl = this.sim.flares[this.sim.flares.length - 1], gl = this.sim.glows[this.sim.glows.length - 1];
     for (const [i, src] of [fl, gl].entries()) { const l = this.dyn[i]; if (src) { l.position.set(src.x, 0.4, src.z); l.intensity = (i === 0 ? 16 : 5) * Math.min(1, src.t / 4); } else l.intensity = 0; }
-    if (this.viewmodel?.group.visible) this.viewmodel.lensWorld(this.flash.position).addScaledVector(this.fwd, 0.02);
-    else this.flash.position.copy(cam.position).addScaledVector(this.fwd, 0.1);
+    // beam from the lens when the flashlight is in hand; otherwise it is clipped to the jacket, just below the eyes
+    if (this.viewmodel?.lensWorld(this.flash.position)) this.flash.position.addScaledVector(this.fwd, 0.02);
+    else { this.flash.position.copy(cam.position).addScaledVector(this.fwd, 0.12); this.flash.position.y -= 0.22; }
     this.flashTarget.position.copy(cam.position).addScaledVector(this.fwd, 6);
+    this.beam?.update(this.flash.position, this.flashTarget.position, Math.min(1.2, flashOut) * (this.sim.cam.nightVision ? 0.3 : 0.05) * (this.plan.dark ? 1.6 : 1), this.scene);
     // flicker lamp emissive per instance (only flickering ones)
     for (const v of this.chunks.values()) {
       if (!v.lamps) continue;
       let dirty = false;
-      v.lampDefs.forEach((d, i) => { if (d.flicker) { v.lamps!.setColorAt(i, this.tmpC.setScalar(Math.max(0.03, flickerAt(d, this.time, svc.settings.value.reduceFlicker)))); dirty = true; } });
+      v.lampDefs.forEach((d, i) => { if (d.flicker) { const k = flickerAt(d, this.time, svc.settings.value.reduceFlicker); v.lamps!.setColorAt(i, this.tmpC.setScalar(Math.max(0.03, k))); v.shafts?.setColorAt(i, this.tmpC.setScalar(k)); dirty = true; } });
       if (dirty && v.lamps.instanceColor) v.lamps.instanceColor.needsUpdate = true;
+      if (dirty && v.shafts?.instanceColor) v.shafts.instanceColor.needsUpdate = true;
     }
     // bobbing items, blinking waypoint LEDs
-    for (const m of this.itemMeshes.values()) { m.position.y = 0.6 + Math.sin(this.time * 2 + m.position.x) * 0.05; m.rotation.y += dt; }
+    const itemFar = this.tier.level <= 1 ? 16 : 30; // pickups are several small meshes: skip the far ones (draw calls on weak GPUs)
+    for (const m of this.itemMeshes.values()) {
+      m.visible = Math.abs(m.position.x - cam.position.x) + Math.abs(m.position.z - cam.position.z) < itemFar;
+      if (!m.visible) continue;
+      (m.userData.halo as Object3D).quaternion.copy(cam.quaternion);
+      if (m.userData.note) continue;
+      m.position.y = 0.6 + Math.sin(this.time * 2 + m.position.x) * 0.05;
+      (m.userData.model as Object3D).rotation.y += dt * 0.9;
+    }
+    this.itemKit?.pulse(this.time);
     this.wpLeds.forEach((l, i) => { if (!this.sim.activatedWaypoints.has(i)) l.color.set(0xff2010).multiplyScalar(Math.sin(this.time * 5) > 0 ? 5 : 0.1); });
     const a = svc.audio();
     if (a?.running) a.setListener(cam.position.x, cam.position.y, cam.position.z, this.fwd.x, this.fwd.z);
@@ -613,8 +681,9 @@ export class LevelScene {
     if (changed) setBake(this.surface, bakeLighting(this.plan, this.bakeLamps));
     for (const v of this.chunks.values()) {
       let dirty = false;
-      v.lampDefs.forEach((d, i) => { if (set.has(d.room) && d.broken) { d.broken = false; v.lamps?.setColorAt(i, this.tmpC.setScalar(1)); dirty = true; } });
+      v.lampDefs.forEach((d, i) => { if (set.has(d.room) && d.broken) { d.broken = false; v.lamps?.setColorAt(i, this.tmpC.setScalar(1)); v.shafts?.setColorAt(i, this.tmpC.setScalar(1)); dirty = true; } });
       if (dirty && v.lamps?.instanceColor) v.lamps.instanceColor.needsUpdate = true;
+      if (dirty && v.shafts?.instanceColor) v.shafts.instanceColor.needsUpdate = true;
     }
   }
 
@@ -624,6 +693,7 @@ export class LevelScene {
     document.body.classList.remove('hiding');
     if (this.scare) { this.scare.onDone = null; this.svc.gfx.fovKick = 0; }
     this.ev.dispose(); this.viewmodel?.dispose();
+    this.beam?.dispose(); this.shafts?.dispose();
     this.warm.forEach((b) => b.dispose()); this.warm = [];
     this.clueVis?.dispose();
     for (const h of this.humHandles) h.stop(0.3);

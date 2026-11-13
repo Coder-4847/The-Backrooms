@@ -26,11 +26,15 @@ export class Ui {
   private scareEl = h('div', { class: 'scare', 'aria-hidden': 'true' });
   private lastBpm = 0;
   private objEl = h('div', { class: 'objective', 'aria-live': 'polite' });
+  private guideEl = h('div', { class: 'guide', 'aria-hidden': 'true' }, h('i', {}, '▲'), h('b'));
   private lastObj = '';
   private toasts = h('div', { class: 'toasts', 'aria-live': 'polite' });
   private captionEl = h('div', { class: 'captions', 'aria-live': 'polite' });
   private stamina = h('div', { class: 'bar' }, h('i'));
   private hotbar = h('div', { class: 'hotbar' });
+  private heldEl = h('div', { class: 'held', 'aria-live': 'polite' });
+  private heldKey = '';
+  private heldShownAt = 0;
   private vitals = h('div', { class: 'vitals' });
   private gear = h('div', { class: 'gear' });
   private noise = h('div', { class: 'noise' }, h('i'));
@@ -51,7 +55,7 @@ export class Ui {
   constructor(private game: Game) {
     this.hud.append(
       h('div', { class: 'rec' }, h('i', { class: 'dot' }), 'REC', this.timeEl),
-      this.vigEl, this.heartEl, this.objEl, this.stamina, this.promptEl, this.statsEl, this.hotbar, this.vitals, this.gear, this.noise);
+      this.vigEl, this.heartEl, this.objEl, this.guideEl, this.stamina, this.promptEl, this.statsEl, this.heldEl, this.hotbar, this.vitals, this.gear, this.noise);
     document.getElementById('app')!.append(this.toasts, this.captionEl, this.scareEl, this.loading);
     bus.on('scare', (e) => this.playScare((e as { kind: string; ms: number }).kind, (e as { kind: string; ms: number }).ms));
     bus.on('toast', (t) => this.toast(t.text, t.kind));
@@ -304,10 +308,7 @@ export class Ui {
     const L = this.game.level; if (!L) return;
     const sim = L.sim, inv = sim.inv;
     if (inv.selected !== i) { inv.selected = i; this.game.sounds()?.click('tick'); return; }
-    const id = inv.held;
-    if (id === 'flashlight') sim.flash.on = !sim.flash.on;
-    else if (id === 'camcorder') sim.cam.toggle();
-    else if (id) sim.useHeld();
+    sim.useSelected();
   }
 
   /** Jump-scare overlay: white-hot flash into blood red, whole-screen shake, and for a lethal hit a slow fade to static and black. */
@@ -318,7 +319,7 @@ export class Ui {
     el.classList.add('on', kind);
     app.classList.remove('shaking', 'shake-hard');
     void app.offsetWidth;
-    if (!this.game.settings.value.reduceShake) app.classList.add(kind === 'light' || kind === 'jolt' ? 'shaking' : 'shake-hard');
+    if (!this.game.settings.value.reduceShake && kind !== 'soft') app.classList.add(kind === 'light' || kind === 'jolt' ? 'shaking' : 'shake-hard');
     window.setTimeout(() => { app.classList.remove('shaking', 'shake-hard'); if (kind !== 'lethal') el.classList.remove('on', kind); }, Math.min(ms, kind === 'lethal' ? 1700 : ms));
     if (kind === 'lethal') window.setTimeout(() => el.classList.add('dead'), 1500);
     else window.setTimeout(() => el.classList.remove('dead'), 0);
@@ -351,6 +352,16 @@ export class Ui {
       this.objEl.replaceChildren(...(o ? [h('small', {}, big ? 'GOAL' : 'NOW'), h('div', {}, ...objText.split('\n').flatMap((t, i) => [i ? h('em', {}, t) : document.createTextNode(t)]))] : []));
     }
     this.objEl.classList.toggle('big', big);
+    // guide arrow: rotates to point at the next doorway on the way to the goal, relative to where you look
+    const gp = level.guide, pl = sim.player;
+    this.guideEl.hidden = !gp || !!sim.hidden;
+    if (gp) {
+      const dx = gp.x - pl.x, dz = gp.z - pl.z, d = Math.hypot(dx, dz);
+      const ahead = dx * -Math.sin(pl.yaw) + dz * -Math.cos(pl.yaw), right = dx * Math.cos(pl.yaw) + dz * -Math.sin(pl.yaw);
+      const ang = Math.atan2(right, ahead);
+      ($('i', this.guideEl) as HTMLElement).style.transform = `rotate(${(ang * 180 / Math.PI).toFixed(1)}deg)`;
+      ($('b', this.guideEl) as HTMLElement).textContent = d < 1.5 ? 'here' : `${Math.round(d)} m`;
+    }
     const touch = this.game.input.device === 'touch';
     const text = p ? (touch ? p : `[${glyphFor('Interact', this.game.input.device, this.game.settings.value.bindings, this.game.input.padLayout)}] ${p}`) : '';
     this.game.input.touch.setInteract(touch && p ? verbFor(p) : null);
@@ -373,6 +384,13 @@ export class Ui {
         (b.lastChild as Text).textContent = id ? `${itemDef(id).name}${inv.count(id) > 1 ? ` ×${inv.count(id)}` : ''}` : '—';
       });
     }
+    // held-item label: what is in your hand and what the use key does with it; fades after a few seconds
+    const dev = this.game.input.device, binds = this.game.settings.value.bindings;
+    const useKey = dev === 'touch' ? 'tap the slot again' : `[${glyphFor('UseItem', dev, binds, this.game.input.padLayout)}]`;
+    const verb = !held ? '' : held === 'flashlight' ? (sim.flash.on ? 'turn off' : 'turn on') : held === 'camcorder' ? (sim.cam.nightVision ? 'night vision off' : 'night vision') : itemDef(held).use || held === 'radio' || held === 'tripline' ? ({ battery: 'recharge flashlight', glowstick: 'snap and drop', flare: 'light it', bandage: 'patch up', tripline: 'set it', radio: 'broadcast lure' } as Record<string, string>)[held] ?? 'use' : '';
+    const hk = `${held}|${verb}|${dev}`;
+    if (hk !== this.heldKey) { this.heldKey = hk; this.heldShownAt = performance.now(); this.heldEl.textContent = held ? `${itemDef(held).name}${verb ? `  ·  ${useKey} ${verb}` : ''}` : ''; }
+    this.heldEl.classList.toggle('dim', performance.now() - this.heldShownAt > 4000);
     // vitals / gear: rebuilt only when something visible changed
     const key = [level.def.id, !!sim.plan.cold, sim.hungerEnabled, st.breath < 99, Math.round(st.health / 5), Math.round(st.sanity / 5), Math.round(st.hunger / 5), Math.round(st.thirst / 5), Math.round(sim.flash.battery), Math.round(sim.cam.battery / 5), sim.flash.on, sim.cam.nightVision, Math.round(st.breath / 5), Math.round(st.warmth / 5), inv.has('compass') ? Math.round(((-sim.player.yaw * 180) / Math.PI + 3600) % 360 / 15) : -1].join('|');
     if (key === this.hudKey) return;

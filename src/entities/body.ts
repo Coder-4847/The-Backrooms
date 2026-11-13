@@ -6,7 +6,7 @@
  * and elbow bend, counter-rotation, breathing, twitches). Detail scales by tier. Front is -z.
  */
 import {
-  Color, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, SphereGeometry, Vector3, type Bone, type BufferGeometry, type Material, type SkinnedMesh,
+  Color, ConeGeometry, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, SphereGeometry, Vector3, type Bone, type BufferGeometry, type Material, type SkinnedMesh,
 } from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { Sculptor, surface, type SurfDef } from './sculpt';
@@ -60,6 +60,8 @@ interface Proportions {
   height: number; shoulder: number; hip: number; thick: number; arm: number; leg: number; torso: number; neck: number; head: number;
   /** 0..1: emaciation (visible ribs, hollow belly) */ gaunt: number;
   finger: number; headLong?: number; belly?: number;
+  /** 0..1: pinch the bottom of the torso into the thighs (no rounded mannequin pelvis) */ crotch?: number;
+  /** 0..1: rolls of sagging skin over the belly */ folds?: number;
 }
 const HUMAN: Proportions = { height: 1.75, shoulder: 0.19, hip: 0.1, thick: 1, arm: 0.76, leg: 0.85, torso: 0.52, neck: 0.1, head: 1, gaunt: 0, finger: 1 };
 
@@ -104,10 +106,11 @@ function sculptHuman(sc: Sculptor, P: Proportions, D: Dress): HumanRig {
       slot: torsoSlot, stops: [[0, root], [0.2, root], [0.4, spine], [0.62, chest], [1, chest]], flat: [1, 0.62], up: V(0, 0, -1), capStart: true,
       mod: (t, a) => {
         const front = Math.max(0, Math.sin(a)), back = Math.max(0, -Math.sin(a));
-        let m = 1;
+        let m = 1 - (P.crotch ?? 0) * smooth(0.2, 0, t) * (0.55 + 0.25 * Math.abs(Math.cos(a)));
         // ribs: horizontal ridges on the front/sides of the ribcage (strong when gaunt), hollow belly under them
         if (t > 0.42 && t < 0.78) m += (Math.cos((t - 0.42) * Math.PI * 2 * 7) * 0.5 + 0.5) * (0.012 + gaunt * 0.06) * (0.4 + front * 0.6) * smooth(0.42, 0.5, t) * smooth(0.78, 0.7, t);
         if (t > 0.2 && t < 0.45) m -= gaunt * 0.12 * front * smooth(0.2, 0.3, t) * smooth(0.45, 0.38, t);
+        if (P.folds && t > 0.12 && t < 0.5) m += P.folds * (0.05 * Math.max(0, Math.sin((t - 0.12) * Math.PI * 2 * 4)) + 0.04) * (0.3 + front * 0.7) * smooth(0.12, 0.2, t) * smooth(0.5, 0.42, t);
         // spine groove + shoulder blades
         m -= back * Math.exp(-Math.pow(Math.cos(a) * 6, 2)) * 0.05;
         if (t > 0.6 && t < 0.82) m += back * 0.025 * Math.sin(((t - 0.6) / 0.22) * Math.PI) * (1 - Math.exp(-Math.pow(Math.cos(a) * 3, 2)));
@@ -266,11 +269,40 @@ function humanAnimator(sc: Sculptor, r: HumanRig, opts: { stride?: number; hunch
 
 // ---------------------------------------------------------------- the Stick (tall, gaunt, faceless)
 
+/**
+ * The Stick's skeleton showing through: knobbly knees and elbows, a ridge of vertebrae down the hunched back,
+ * jutting hip bones and collarbones. Breaks up the smooth "mannequin" silhouette; scales with the tier.
+ */
+function stickBones(sc: Sculptor, r: HumanRig, P: Proportions, collar = true): void {
+  const k = P.height / 1.75;
+  const lv = sc.level;
+  [0, 1].forEach((i) => {
+    const sx = i === 0 ? -1 : 1;
+    const kn = sc.jointPos(r.kn[i]), el = sc.jointPos(r.el[i]), hp = sc.jointPos(r.hp[i]), sh = sc.jointPos(r.sh[i]);
+    sc.blob(V(kn.x, kn.y + 0.01 * k, kn.z - 0.028 * k), 0.026 * k, 0.032 * k, 0.022 * k, S.Skin, r.kn[i], undefined, 0.6); // kneecap
+    sc.blob(V(kn.x, kn.y - 0.03 * k, kn.z - 0.012 * k), 0.024 * k, 0.03 * k, 0.024 * k, S.Skin, r.kn[i], undefined, 0.5); // tibia head
+    sc.blob(V(el.x, el.y, el.z + 0.02 * k), 0.02 * k, 0.03 * k, 0.022 * k, S.Skin, r.el[i], undefined, 0.5); // elbow point
+    sc.blob(V(hp.x + sx * 0.024 * k, hp.y + 0.07 * k, hp.z - 0.02 * k), 0.022 * k, 0.03 * k, 0.03 * k, S.Skin, r.root, undefined, 0.5); // iliac crest
+    if (lv >= 1 && collar) sc.sweep([V(sx * 0.012 * k, sh.y + 0.012 * k, -0.045 * k), V(sx * 0.05 * k, sh.y + 0.022 * k, -0.04 * k), V(sh.x * 0.95, sh.y + 0.018 * k, -0.012 * k)], [0.009 * k, 0.011 * k, 0.012 * k], { slot: S.Skin, stops: [[0, r.chest], [1, r.chest]], capStart: true, capEnd: true }, 0.4); // collarbone
+    if (lv >= 2) sc.blob(V(sh.x * 0.62, sh.y - 0.06 * k, 0.05 * k), 0.035 * k, 0.05 * k, 0.014 * k, S.Skin, r.chest, undefined, 0.5); // shoulder blade
+  });
+  // vertebrae: a line of knuckles down the back, from the pelvis to the base of the skull
+  const n = [5, 8, 11, 14, 18][Math.max(0, Math.min(4, lv))];
+  const y0 = sc.jointPos(r.root).y + 0.02 * k, y1 = sc.jointPos(r.neck).y + 0.03 * k;
+  for (let j = 0; j < n; j++) {
+    const u = j / (n - 1), y = y0 + (y1 - y0) * u;
+    const bone = u < 0.33 ? r.root : u < 0.62 ? r.spine : u < 0.9 ? r.chest : r.neck;
+    const depth = (0.05 + 0.03 * Math.sin(u * Math.PI)) * k; // thicker through the ribcage
+    sc.blob(V(0, y, depth), 0.012 * k, 0.011 * k, 0.012 * k, S.Skin, bone, undefined, 0.35);
+  }
+}
+
 export function buildStick(level: number, ghost = false): Body {
   const sc = new Sculptor(level, 'stick');
-  const P: Proportions = { ...HUMAN, height: 2.8, shoulder: 0.15, hip: 0.062, thick: 0.6, arm: 1.0, leg: 0.96, torso: 0.5, neck: 0.16, head: 0.95, headLong: 1.35, gaunt: 0.9, finger: 2.4 };
+  const P: Proportions = { ...HUMAN, height: 2.8, shoulder: 0.15, hip: 0.062, thick: 0.6, arm: 1.0, leg: 0.96, torso: 0.5, neck: 0.16, head: 0.95, headLong: 1.35, gaunt: 0.9, finger: 2.4, crotch: 0.85 };
   const r = sculptHuman(sc, P, { shirt: false, pants: false, shoes: false, hair: false, tie: false, eyes: 'void', sockets: 2.2 });
-  const b = finish(sc, { [S.Skin]: { color: 0x1d1c19, rough: 0.62, kind: 'skin', emissive: 0x0a0806, sheen: 0.4, clearcoat: 0.3 } }, level, ghost);
+  stickBones(sc, r, P);
+  const b = finish(sc, { [S.Skin]: { color: 0x2a2620, rough: 0.85, kind: 'flesh', emissive: 0x050403, sheen: 0.15, clearcoat: 0.06 } }, level, ghost);
   const group = new Group(); group.add(b.mesh);
   // the void where its eyes should be: two pin-pricks of reflected light
   const eyeM = new MeshStandardMaterial({ color: 0x000000, roughness: 0.05, metalness: 0, transparent: ghost, opacity: ghost ? 0.4 : 1 });
@@ -278,7 +310,13 @@ export function buildStick(level: number, ghost = false): Body {
   const head = sc.bones[r.head], hj = sc.jointPos(r.head);
   r.eyePos.forEach((p) => attach(b, head, eg.clone(), eyeM, p.x, p.y, p.z, hj));
   eg.dispose();
-  const anim = humanAnimator(sc, r, { stride: 0.55, hunch: 0.14, armOut: 0.07 });
+  // a long lipless slit where a mouth should be; it splits wide open when it attacks
+  const mouthM = new MeshBasicMaterial({ color: 0x050202, transparent: ghost, opacity: ghost ? 0.4 : 1 });
+  const ey = (r.eyePos[0].y + r.eyePos[1].y) / 2, ez = (r.eyePos[0].z + r.eyePos[1].z) / 2;
+  const mouth = attach(b, head, new SphereGeometry(1, 12, 8), mouthM, 0, ey - 0.13, ez + 0.004, hj);
+  mouth.scale.set(0.05, 0.005, 0.014);
+  let gape = 0;
+  const anim = humanAnimator(sc, r, { stride: 0.55, hunch: 0.2, armOut: 0.07 });
   let twitch = 0, nextTwitch = 0.4;
   return {
     group,
@@ -288,6 +326,9 @@ export function buildStick(level: number, ghost = false): Body {
       if (nextTwitch <= 0) { nextTwitch = 0.25 + Math.random() * (seen ? 1.4 : 0.6); twitch = (Math.random() - 0.5) * (seen ? 0.12 : 0.6); }
       head.rotation.z += (twitch - head.rotation.z) * Math.min(1, 18 * dt);
       if (tell) head.rotation.x = 0.5;
+      gape += ((tell ? 1 : 0) - gape) * Math.min(1, dt * (tell ? 9 : 3));
+      mouth.scale.y = 0.005 + gape * (0.05 + Math.sin(t * 31) * 0.006);
+      mouth.scale.x = 0.05 + gape * 0.012;
       sc.bones[r.wr[0]].rotation.z = Math.sin(t * 2.3) * 0.15; sc.bones[r.wr[1]].rotation.z = Math.sin(t * 1.9 + 1) * 0.15; // fingers flex
       group.rotation.z = Math.sin(t * 2.1) * 0.01 * (seen ? 3 : 1);
     },
@@ -333,6 +374,15 @@ export function buildHound(level: number): Body {
     p.y -= front * front * 0.012;
   }, 1.2);
   sc.blob(V(0, 0.535, -0.69), 0.055, 0.025, 0.1, S.Skin, jaw, (p, l) => { p.y -= Math.max(0, -l.z) * 0.006; }, 0.8);
+  // teeth: too many, too human, two crooked rows along the gum line (they show when the jaw drops)
+  const teeth = [0, 5, 7, 9, 11][Math.max(0, Math.min(4, level))];
+  for (let i = 0; i < teeth; i++) {
+    const u = i / Math.max(1, teeth - 1), a = (u - 0.5) * 2.4;
+    const x = Math.sin(a) * 0.045, z = -0.67 - Math.cos(a) * 0.1 + 0.02;
+    const len = 0.016 + ((i * 7) % 5) * 0.004;
+    sc.sweep([V(x, 0.556, z), V(x * 1.02, 0.556 - len, z - 0.003)], [0.0065, 0.0015], { slot: S.Nail, stops: [[0, head], [1, head]], capEnd: true }, 0.3);
+    sc.sweep([V(x * 0.92, 0.545, z + 0.012), V(x * 0.9, 0.545 + len * 0.8, z + 0.008)], [0.006, 0.0015], { slot: S.Nail, stops: [[0, jaw], [1, jaw]], capEnd: true }, 0.3);
+  }
   // matted hair hanging off the skull
   const strands = [0, 8, 14, 22, 34][level];
   for (let i = 0; i < strands; i++) {
@@ -350,7 +400,8 @@ export function buildHound(level: number): Body {
       if (level >= 2) for (let f = 0; f < 4; f++) { const fx = p2.x + (-0.024 + f * 0.016) * L.side; sc.sweep([V(fx, 0.03, p2.z - 0.07), V(fx, 0.02, p2.z - 0.13), V(fx, 0.008, p2.z - 0.17)], [0.008, 0.007, 0.004], { slot: S.Skin, stops: [[0, L.c], [1, L.c]], capEnd: true }, 0.35); }
     } else sc.sweep([V(p2.x, 0.12, p2.z + 0.02), V(p2.x, 0.04, p2.z - 0.06), V(p2.x, 0.025, p2.z - 0.18)], [0.04, 0.04, 0.026], { slot: S.Skin, stops: [[0, L.c], [1, L.c]], flat: [1, 0.6], up: V(0, 1, 0), capEnd: true, capStart: true }, 0.6);
   }
-  const b = finish(sc, { [S.Skin]: { color: 0x3a3631, rough: 0.55, kind: 'skin', sheen: 0.3, clearcoat: 0.25 }, [S.Hair]: { color: 0x0e0c0b, rough: 0.7, kind: 'fur', sheen: 0.6 } }, level);
+  const b = finish(sc, { [S.Skin]: { color: 0x352e28, rough: 0.75, kind: 'flesh', sheen: 0.12, clearcoat: 0.15 }, [S.Nail]: { color: 0xc8b890, rough: 0.35, clearcoat: 0.6 }, [S.Hair]: { color: 0x0e0c0b, rough: 0.7, kind: 'fur', sheen: 0.6 } }, level);
+  b.mats[S.Nail].userData.keep = true; // teeth keep their colour on the Crawler variant
   const group = new Group(); group.add(b.mesh);
   const eyeMat = new MeshBasicMaterial({ color: new Color(0xff5a20).multiplyScalar(4) });
   const hj = sc.jointPos(head);
@@ -374,7 +425,7 @@ export function buildHound(level: number): Body {
       B[spine].rotation.x = Math.sin(phase * 2) * 0.03 * amt + Math.sin(t * 1.9) * 0.015;
       B[head].rotation.x = tell ? 0.3 + Math.sin(t * 40) * 0.03 : Math.sin(t * 0.9) * 0.08;
       B[head].rotation.y = Math.sin(t * 0.5) * 0.15 * (1 - amt);
-      B[jaw].rotation.x = tell ? 0.45 + Math.sin(t * 30) * 0.08 : 0.04;
+      B[jaw].rotation.x = tell ? 0.55 + Math.sin(t * 30) * 0.08 : 0.06 + Math.max(0, Math.sin(t * 0.7)) * 0.08 * (1 - amt); // panting when still
       group.rotation.z = Math.sin(t * 17) * (tell ? 0.025 : 0);
     },
     dispose() { disposeBuilt(b); },
@@ -430,26 +481,65 @@ export function buildHumanoid(level: number, o: HumanOpts): Body {
 
 export function buildHowler(level: number): Body {
   const sc = new Sculptor(level, 'howler');
-  const P: Proportions = { ...HUMAN, height: 2.05, shoulder: 0.3, hip: 0.13, thick: 1.55, arm: 0.98, leg: 0.8, torso: 0.6, neck: 0.06, head: 1.25, gaunt: 0.35, finger: 1.6, belly: 0.1 };
+  const P: Proportions = { ...HUMAN, height: 2.05, shoulder: 0.3, hip: 0.13, thick: 1.55, arm: 0.98, leg: 0.8, torso: 0.6, neck: 0.06, head: 1.25, gaunt: 0.35, finger: 1.6, belly: 0.22, folds: 0.8, crotch: 0.4 };
   const r = sculptHuman(sc, P, { shirt: false, pants: false, shoes: false, hair: false, tie: false, eyes: 'void', sockets: 0 });
-  const b = finish(sc, { [S.Skin]: { color: 0x2b2a2e, rough: 0.5, kind: 'skin', sheen: 0.3, clearcoat: 0.35 } }, level);
+  const k = 2.05 / 1.75;
+  stickBones(sc, r, P, false);
+  // a hunched hump of muscle over the shoulders, lumpy growths, and knuckles worn from walking on them
+  const ch = sc.jointPos(r.chest);
+  sc.blob(V(0, ch.y + 0.1 * k, 0.12 * k), 0.2 * k, 0.16 * k, 0.12 * k, S.Skin, r.chest, (p, l) => { p.y += Math.max(0, l.y) * 0.03 * k * Math.sin(l.x * 9); }, 1.1);
+  if (level >= 2) for (let i = 0; i < 5; i++) { const a = i * 2.1; sc.blob(V(Math.sin(a) * 0.18 * k, ch.y + 0.04 * k + (i % 3) * 0.06 * k, 0.1 * k + Math.cos(a) * 0.04 * k), 0.035 * k, 0.03 * k, 0.03 * k, S.Skin, r.chest, undefined, 0.4); }
+  [0, 1].forEach((i) => { const w = sc.jointPos(r.wr[i]); sc.blob(V(w.x, w.y - 0.1 * k, w.z - 0.03 * k), 0.04 * k, 0.03 * k, 0.05 * k, S.Skin, r.wr[i], undefined, 0.5); });
+  const b = finish(sc, { [S.Skin]: { color: 0x3a363a, rough: 0.8, kind: 'flesh', sheen: 0.15, clearcoat: 0.08 }, [S.Nail]: { color: 0xb8a888, rough: 0.4, clearcoat: 0.5 } }, level);
   const group = new Group(); group.add(b.mesh);
   const mouthM = new MeshBasicMaterial({ color: 0x050204 });
-  const hj = sc.jointPos(r.head), k = 2.05 / 1.75;
-  const mouth = attach(b, sc.bones[r.head], new SphereGeometry(1, 12, 8), mouthM, 0, hj.y + 0.06 * k, -0.105 * k * 1.25, hj);
+  const hj = sc.jointPos(r.head);
+  const my = hj.y + 0.06 * k, mz = -0.105 * k * 1.25;
+  const mouth = attach(b, sc.bones[r.head], new SphereGeometry(1, 12, 8), mouthM, 0, my, mz, hj);
   mouth.scale.set(0.07, 0.025, 0.03);
-  const anim = humanAnimator(sc, r, { stride: 0.8, hunch: 0.32, armOut: 0.12 });
+  // two rows of teeth on the lips of that mouth: they pull apart into a maw when it screams
+  const toothM = new MeshStandardMaterial({ color: 0xc8b898, roughness: 0.4 });
+  toothM.userData.keep = true; // variants (Lurker, Pursuer) recolour the flesh, not the teeth
+  const nT = [5, 7, 9, 11, 13][Math.max(0, Math.min(4, level))];
+  const upper = attach(b, sc.bones[r.head], teethRow(nT, 0.06, 0.012, 0.035, 0.007, -1, 1), toothM, 0, my + 0.012, mz - 0.034, hj);
+  const lower = attach(b, sc.bones[r.head], teethRow(nT - 1, 0.055, 0.012, 0.03, 0.007, 1, 2), toothM, 0, my - 0.012, mz - 0.034, hj);
+  const uy = upper.position.y, ly = lower.position.y;
+  let gape = 0;
+  const anim = humanAnimator(sc, r, { stride: 0.8, hunch: 0.45, armOut: 0.16 });
   return {
     group,
     update(speed, t, dt, tell) {
       anim(speed, t, dt, tell);
       const head = sc.bones[r.head];
       head.rotation.z = Math.sin(t * 1.9) * 0.18; // listening: head cocked, swaying
-      head.rotation.x = tell ? -0.5 : -0.2;
-      mouth.scale.set(0.07 * (1 + (tell ? 1.2 : 0)), 0.025 * (tell ? 6 + Math.sin(t * 40) * 1.5 : 1), 0.03);
+      head.rotation.x = tell ? -0.65 : -0.05; // hunched over, it has to crane its head up to scream
+      gape += ((tell ? 1 : 0) - gape) * Math.min(1, dt * (tell ? 10 : 4));
+      const open = 0.025 * (1 + gape * (3.6 + Math.sin(t * 40) * 1));
+      mouth.scale.set(0.07 * (1 + gape * 0.35), open, 0.03);
+      upper.position.y = uy + open * 0.85 - 0.02; lower.position.y = ly - open * 0.85 + 0.02;
+      upper.scale.x = lower.scale.x = 1 + gape * 0.35;
     },
     dispose() { disposeBuilt(b); },
   };
+}
+
+/**
+ * A row of pointed teeth merged into one geometry (one draw call): `n` cones spread along an arc of half-width
+ * `w` and depth `d` in the x/z plane, pointing down (`dir` -1) or up (+1). Lengths vary so the row looks crooked.
+ */
+function teethRow(n: number, w: number, d: number, len: number, r: number, dir: 1 | -1, seed = 1): BufferGeometry {
+  const parts: BufferGeometry[] = [];
+  for (let i = 0; i < n; i++) {
+    const u = n > 1 ? i / (n - 1) : 0.5, a = (u - 0.5) * Math.PI * 0.9;
+    const l = len * (0.6 + 0.4 * Math.cos((u - 0.5) * 2.4)) * (0.75 + ((i * 7 + seed * 3) % 5) * 0.1);
+    const g = new ConeGeometry(r * (0.8 + ((i + seed) % 3) * 0.15), l, 5);
+    if (dir < 0) g.rotateX(Math.PI);
+    g.rotateZ(((i * 13 + seed) % 7 - 3) * 0.05);
+    g.translate(Math.sin(a) * w, dir * l / 2, -Math.cos(a) * d);
+    parts.push(g);
+  }
+  const m = mergeGeometries(parts)!; parts.forEach((g) => g.dispose());
+  return m;
 }
 
 // ---------------------------------------------------------------- Leviathan (mostly submerged)
@@ -464,14 +554,38 @@ export function buildLeviathan(level: number): Body {
     mod: (t, a) => 1 + Math.max(0, Math.sin(a)) * 0.05 * Math.sin(t * 60) + Math.max(0, -Math.sin(a)) * 0.04 * Math.sin(t * 25 + a * 3),
   }, 2);
   for (let i = 0; i < 5; i++) { const z = -2 + i * 0.9; sc.sweep([V(0, 1.15 - i * 0.05, z), V(0, 1.6 - i * 0.08, z + 0.35)], [0.22 - i * 0.025, 0.02], { slot: S.Skin, stops: [[0, bones[Math.min(N - 1, 1 + Math.floor(i / 2))]], [1, bones[Math.min(N - 1, 1 + Math.floor(i / 2))]]], flat: [0.25, 1], capStart: true }, 0.5); }
-  const b = finish(sc, { [S.Skin]: { color: 0x14181c, rough: 0.28, metal: 0.1, kind: 'skin', clearcoat: 0.8 } }, level);
+  const b = finish(sc, { [S.Skin]: { color: 0x1c2228, rough: 0.35, metal: 0.1, kind: 'flesh', clearcoat: 0.8 } }, level);
   const group = new Group(), inner = new Group(); group.add(inner); inner.add(b.mesh);
   const eyeM = new MeshBasicMaterial({ color: new Color(0xc8e8ff).multiplyScalar(1.5) });
   const j0 = sc.jointPos(bones[0]);
   for (const sx of [-1, 1]) attach(b, sc.bones[bones[0]], new SphereGeometry(0.07, 8, 6), eyeM, sx * 0.42, 0.72, -4.0, j0);
+  // a wide mouth at the front: needle teeth, top and bottom, that part when it surges
+  const toothM = new MeshStandardMaterial({ color: 0xd8d0c0, roughness: 0.3 }); toothM.userData.keep = true;
+  const nT = [7, 9, 13, 17, 21][Math.max(0, Math.min(4, level))];
+  const up = attach(b, sc.bones[bones[0]], teethRow(nT, 0.32, 0.12, 0.2, 0.025, -1, 3), toothM, 0, 0.47, -4.2, j0);
+  const lo = attach(b, sc.bones[bones[0]], teethRow(nT - 2, 0.3, 0.12, 0.17, 0.022, 1, 4), toothM, 0, 0.37, -4.18, j0);
+  // lure spots: faint glowing dots in two rows down each flank, pulsing like something deep-sea
+  const lureM = new MeshBasicMaterial({ color: new Color(0x60d8c8).multiplyScalar(1.2) }); lureM.userData.keep = true;
+  const radAt = (z: number) => { const zs = [-4.4, -3.2, -1.5, 0.5, 2.4, 4.2], rs = [0.3, 0.8, 1.05, 0.95, 0.55, 0.12]; for (let i = 0; i + 1 < zs.length; i++) if (z <= zs[i + 1]) { const u = (z - zs[i]) / (zs[i + 1] - zs[i]); return rs[i] + (rs[i + 1] - rs[i]) * u; } return 0.12; };
+  if (level >= 1) bones.forEach((bn, i) => {
+    const jp = sc.jointPos(bn), dots: BufferGeometry[] = [];
+    for (let d = 0; d < 3; d++) {
+      const z = jp.z - 0.6 + d * 0.5; if (z < -3.6 || z > 3.6) continue;
+      const r = radAt(z);
+      for (const sx of [-1, 1]) for (const row of [0.15, -0.2]) { const g = new SphereGeometry(0.035, 6, 4); g.translate(sx * r * 1.1 * Math.cos(row) * 0.98, 0.4 + r * 0.85 * Math.sin(row), z); dots.push(g); }
+    }
+    if (!dots.length) return;
+    const merged = mergeGeometries(dots)!; dots.forEach((g) => g.dispose());
+    attach(b, sc.bones[bn], merged, lureM, 0, 0, 0, jp); void i; // geometry is in model space: offset by the joint
+  });
+  const lureBase = lureM.color.clone();
+  let gape = 0;
   return {
     group,
-    update(speed, t, _dt, tell) {
+    update(speed, t, dt, tell) {
+      gape += ((tell || speed > 1.5 ? 1 : 0) - gape) * Math.min(1, dt * 4);
+      up.position.y = 0.47 + gape * 0.12; lo.position.y = 0.37 - gape * 0.12;
+      lureM.color.copy(lureBase).multiplyScalar(0.6 + 0.4 * Math.sin(t * 1.7) + gape * 0.8);
       inner.position.y = -1.1 + Math.sin(t * 0.8) * 0.15 + (speed > 1 || tell ? 0.6 : 0); // mostly submerged, surfacing when it moves
       bones.forEach((bn, i) => { sc.bones[bn].rotation.y = Math.sin(t * 1.4 - i * 0.7) * 0.08 * (1 + Math.min(1, speed)); });
       inner.rotation.z = Math.sin(t * 1.1) * 0.05;
@@ -485,27 +599,49 @@ export function buildLeviathan(level: number): Body {
 export function buildSmiler(level: number): Body {
   const geos: BufferGeometry[] = []; const mats: Material[] = [];
   const glow = new MeshBasicMaterial({ color: new Color(0xf4f0d0).multiplyScalar(3) }); mats.push(glow);
-  const dark = new MeshStandardMaterial({ color: 0x050505, roughness: 1, transparent: true, opacity: 0.55, depthWrite: false }); mats.push(dark);
   const group = new Group();
   const add = (g: BufferGeometry, m: Material): Mesh => { geos.push(g); const mesh = new Mesh(g, m); group.add(mesh); return mesh; };
   const seg = [6, 8, 12, 16, 24][level];
-  const body = add(new SphereGeometry(1, seg, seg), dark); body.scale.set(0.3, 0.8, 0.2); body.position.y = 1.0;
-  // the grin: 17 teeth merged into one mesh (one draw call); the whole row stretches on the tell
+  // body: a knot of darkness made of several overlapping, drifting smoke lobes (fewer on low tiers)
+  const lobes: { m: Mesh; base: Vector3; s: Vector3; ph: number }[] = [];
+  const nLobes = level <= 1 ? 2 : level === 2 ? 4 : 6;
+  const sphere = new SphereGeometry(1, seg, seg); geos.push(sphere);
+  for (let i = 0; i < nLobes; i++) {
+    const m = new MeshStandardMaterial({ color: 0x030303, roughness: 1, transparent: true, opacity: i === 0 ? 0.6 : 0.32, depthWrite: false }); mats.push(m);
+    const mesh = new Mesh(sphere, m); group.add(mesh);
+    const base = i === 0 ? V(0, 1.1, 0) : V(Math.sin(i * 2.3) * 0.16, 0.7 + (i / nLobes) * 1.1, Math.cos(i * 1.7) * 0.08);
+    const sc = i === 0 ? V(0.3, 0.75, 0.22) : V(0.2 + (i % 3) * 0.05, 0.3 + (i % 2) * 0.12, 0.18);
+    mesh.position.copy(base); mesh.scale.copy(sc);
+    lobes.push({ m: mesh, base, s: sc, ph: i * 1.3 });
+  }
+  // the grin: two jagged rows of glowing teeth along a smile curve, merged into one mesh (one draw call)
   const parts: BufferGeometry[] = [];
-  for (let i = 0; i < 17; i++) {
-    const a = -0.95 + (i / 16) * 1.9;
-    const g = new SphereGeometry(1, 6, 5); g.scale(0.022, 0.045 + Math.cos(a) * 0.012, 0.012); g.translate(Math.sin(a) * 0.26, -Math.cos(a) * 0.1, -0.2 - Math.cos(a) * 0.02);
+  const nT = level <= 1 ? 13 : 19;
+  for (const row of [-1, 1] as const) for (let i = 0; i < nT - (row > 0 ? 1 : 0); i++) {
+    const u = i / (nT - 1), a = (u - 0.5) * 2;                     // -1 .. 1 across the mouth
+    const len = (0.06 + 0.035 * Math.cos(a * 1.4)) * (0.7 + ((i * 7 + (row > 0 ? 3 : 0)) % 5) * 0.12);
+    const g = new ConeGeometry(0.014 + 0.004 * Math.cos(a), len, 4);
+    if (row < 0) g.rotateX(Math.PI); // upper row points down
+    g.rotateZ(a * 0.25 + ((i * 11) % 5 - 2) * 0.06);
+    const y = 0.11 * a * a - 0.02;                                    // the smile curves up at the corners
+    g.translate(a * 0.27, y + row * -0.012 + (row < 0 ? -len / 2 + 0.03 : len / 2 - 0.03), -0.2 - (1 - a * a) * 0.03);
     parts.push(g);
   }
   const teethG = mergeGeometries(parts)!; parts.forEach((g) => g.dispose());
-  const teeth = add(teethG, glow); teeth.position.y = 1.7;
-  for (const sx of [-1, 1]) { const e = add(new SphereGeometry(1, 8, 6), glow); e.scale.set(0.045, 0.022, 0.015); e.position.set(sx * 0.1, 1.78, -0.2); e.rotation.z = sx * 0.25; }
+  const teeth = add(teethG, glow); teeth.position.y = 1.62;
+  const eyes: Mesh[] = [];
+  for (const sx of [-1, 1]) { const e = add(new SphereGeometry(1, 8, 6), glow); e.scale.set(0.05, 0.02, 0.015); e.position.set(sx * 0.11, 1.84, -0.2); e.rotation.z = sx * 0.3; eyes.push(e); }
   return {
     group,
     update(_speed, t, _dt, tell) {
       group.position.y = Math.sin(t * 1.3) * 0.04;
-      teeth.scale.y = tell ? 2 + Math.sin(t * 30) * 0.3 : 1;
-      body.scale.x = 0.3 * (1 + (tell ? 0.3 : 0));
+      for (const l of lobes) {
+        l.m.position.set(l.base.x + Math.sin(t * 0.7 + l.ph) * 0.05, l.base.y + Math.sin(t * 0.9 + l.ph * 2) * 0.04, l.base.z + Math.cos(t * 0.6 + l.ph) * 0.04);
+        const k = 1 + Math.sin(t * 1.1 + l.ph) * 0.08 + (tell ? 0.3 : 0);
+        l.m.scale.set(l.s.x * k, l.s.y * (1 - (k - 1) * 0.6), l.s.z * k); // breathes: wider while shorter
+      }
+      teeth.scale.set(tell ? 1.25 : 1, tell ? 2 + Math.sin(t * 30) * 0.3 : 1, 1);
+      for (const e of eyes) e.scale.y = tell ? 0.008 + Math.abs(Math.sin(t * 25)) * 0.01 : 0.02; // narrows to slits
     },
     dispose() { geos.forEach((g) => g.dispose()); mats.forEach((m) => m.dispose()); },
   };
@@ -520,8 +656,20 @@ export function buildLeech(level: number): Body {
     slot: S.Skin, stops: [[0, b0], [0.5, b1], [1, b2]], capStart: true, capEnd: true, flat: [1, 0.8], up: V(0, 1, 0),
     mod: (t) => 1 + 0.07 * Math.max(0, Math.cos(t * Math.PI * 2 * 9)),
   }, 1.4);
-  const b = finish(sc, { [S.Skin]: { color: 0x2c2418, rough: 0.2, metal: 0.05, kind: 'skin', clearcoat: 1 } }, level);
+  // round sucker mouth at the front: a lip of flesh ringed with tiny inward-pointing teeth
+  sc.sweep([V(0, 0.13, -0.5), V(0, 0.13, -0.6)], [0.07, 0.085], { slot: S.Skin, stops: [[0, b0], [1, b0]], flat: [1, 0.85], up: V(0, 1, 0), mod: (t, a) => 1 + 0.08 * Math.sin(a * 6) * t }, 0.8);
+  const b = finish(sc, { [S.Skin]: { color: 0x382e20, rough: 0.3, metal: 0.05, kind: 'flesh', clearcoat: 1 } }, level);
   const group = new Group(); group.add(b.mesh);
+  if (level >= 1) {
+    const toothM = new MeshStandardMaterial({ color: 0xd8c8a8, roughness: 0.35 });
+    const parts: BufferGeometry[] = [];
+    const n = level >= 3 ? 14 : 9;
+    for (let i = 0; i < n; i++) { const a = (i / n) * Math.PI * 2; const g = new ConeGeometry(0.008, 0.035, 4); g.rotateZ(-a - Math.PI / 2); g.translate(Math.cos(a) * 0.055, Math.sin(a) * 0.047, 0); parts.push(g); }
+    const ring = mergeGeometries(parts)!; parts.forEach((g) => g.dispose());
+    attach(b, sc.bones[b0], ring, toothM, 0, 0.13, -0.6, sc.jointPos(b0));
+    const hole = new MeshBasicMaterial({ color: 0x070302 });
+    const hm = attach(b, sc.bones[b0], new SphereGeometry(1, 10, 6), hole, 0, 0.13, -0.598, sc.jointPos(b0)); hm.scale.set(0.05, 0.042, 0.01);
+  }
   return {
     group,
     update(speed, t) {

@@ -65,17 +65,18 @@ export const level0: LevelDef = {
   act: 1,
   tier: 'uneasy',
   door: { color: '#d8c43c', icon: '0' },
-  targetSeconds: [150, 1800],
+  targetSeconds: [90, 1500],
   intensity: 0.35,
-  look: {
-    walls: [['wallpaper', 0], ['wallpaper', 1], ['wallpaper', 2], ['concrete', 0]], floor: ['carpet', 0], ceiling: ['ceiling', 0], trim: ['concrete', 1],
+  look: { // mono-yellow wallpaper everywhere: the Lobby's signature
+    walls: [['wallpaper', 0], ['wallpaper', 1], ['wallpaper', 2], ['wallpaper', 0]], floor: ['carpet', 0], ceiling: ['ceiling', 0], trim: ['concrete', 1],
     fogColor: 0x1b1708, fogDensity: 0.03, ambient: 0x4a4218, ambientIntensity: 0.42, lampColor: 0xfff0b8,
-    grade: { tint: [1.08, 1.02, 0.78], saturation: 1.08, contrast: 1.06 }, dust: 0xd8c890,
+    grade: { tint: [1.1, 1.03, 0.74], saturation: 1.22, contrast: 1.06 }, dust: 0xd8c890,
   },
   generate(seed) {
     return dress(generateGraphLevel(seed, {
-      levelId: 'level0', tier: 'uneasy', width: 120, depth: 100, rooms: 44, minRoom: 6, maxRoom: 18,
-      wallHeight: 3, locks: 1, loops: 0.4, variants: 4, nests: 2, loot: 34,
+      // the tutorial level: smaller than it used to be (44 rooms -> 30), with the key kept near the route
+      levelId: 'level0', tier: 'uneasy', width: 100, depth: 84, rooms: 30, minRoom: 6, maxRoom: 16,
+      wallHeight: 3, locks: 1, loops: 0.35, variants: 4, nests: 2, loot: 26, keyBias: 'near',
     }));
   },
 };

@@ -30,6 +30,8 @@ export interface GraphOptions {
   lockStyles?: ('key' | 'fuse' | 'valves' | 'pry' | 'rope' | 'sequence' | 'breaker')[];
   /** Weighted loot table; defaults to batteries/water/bandages/crackers/glowsticks. */
   lootTable?: [string, number][];
+  /** Where keys go: 'far' (default) favours distant side rooms; 'near' keeps them close to the route (tutorial levels). */
+  keyBias?: 'far' | 'near';
 }
 
 /**
@@ -212,7 +214,7 @@ export function generateGraphLevel(seed: number, o: GraphOptions): LevelPlan {
     const side = cands.filter((r) => !onPath.has(r));
     const pool = side.length ? side : cands.length ? cands : [spawnRoom];
     // farthest-ish rooms make the detour meaningful: weight by distance
-    const room = rItems.weighted(pool.map((r) => [r, 1 + (dist.get(r) ?? 0)] as const));
+    const room = rItems.weighted(pool.map((r) => [r, o.keyBias === 'near' ? 1 / (1 + (dist.get(r) ?? 0)) ** 2 : 1 + (dist.get(r) ?? 0)] as const));
     if (l.style === 'valves') {
       // puzzle: 3 valves in three different pre-lock rooms plus a hint note that states the solution
       const picks = rItems.shuffle([...pool]).slice(0, 3);

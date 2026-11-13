@@ -14,7 +14,7 @@ export interface Settings {
   tier: TierSetting; resolutionScale: number; fpsCap: string; fov: number; drawDistance: number;
   shadowQuality: 'off' | 'low' | 'high'; textureQuality: 'low' | 'medium' | 'high'; antialias: boolean;
   bloom: boolean; ssao: boolean; vhs: boolean; vhsIntensity: number; grain: boolean; scanlines: boolean;
-  chromatic: boolean; vignette: boolean; dust: boolean; batterySaver: boolean; showFps: boolean;
+  chromatic: boolean; vignette: boolean; dust: boolean; volumetrics: boolean; batterySaver: boolean; showFps: boolean;
   // audio
   master: number; music: number; sfx: number; ambience: number; voice: number;
   // controls
@@ -22,7 +22,7 @@ export interface Settings {
   touchSize: number; touchOpacity: number; leftHanded: boolean; oneHanded: boolean; holdToggleSprint: 'hold' | 'toggle';
   holdToggleCrouch: 'hold' | 'toggle'; bindings: Bindings;
   // gameplay
-  difficulty: DifficultyId; scare: ScareIntensity; hunger: boolean; autosave: boolean;
+  difficulty: DifficultyId; scare: ScareIntensity; hunger: boolean; autosave: boolean; guidance: 'arrow' | 'hints' | 'off';
   // accessibility
   lens: string;
   subtitles: boolean; reduceFlicker: boolean; reduceJumpscares: boolean; reduceShake: boolean;
@@ -43,7 +43,7 @@ const sel = (key: keyof Settings, label: string, category: Category, def: string
   ({ key, label, category, type: 'select', def, options, hint });
 
 export const SCHEMA: SettingDef[] = [
-  sel('tier', 'Quality tier', 'Graphics', 'auto', opts('auto', 'ultra', 'high', 'medium', 'low', 'potato'), 'Auto benchmarks your device and adapts while you play.'),
+  sel('tier', 'Quality tier', 'Graphics', 'auto', opts('auto', 'ultra', 'high', 'medium', 'low', 'potato'), 'Auto benchmarks your device and adapts while you play. On an older laptop or phone pick Low or Potato: same game, simpler lighting and models.'),
   rng('resolutionScale', 'Resolution scale', 'Graphics', 1, 0.5, 1, 0.05),
   sel('fpsCap', 'FPS cap', 'Graphics', '60', [{ value: '30', label: '30' }, { value: '60', label: '60' }, { value: '120', label: '120' }, { value: '0', label: 'Uncapped' }], 'Browsers always sync to the display; the cap limits it further.'),
   rng('fov', 'Field of view', 'Graphics', 75, 60, 110, 1, '°'),
@@ -60,6 +60,7 @@ export const SCHEMA: SettingDef[] = [
   tog('chromatic', 'Chromatic aberration', 'Graphics', true),
   tog('vignette', 'Vignette', 'Graphics', true),
   tog('dust', 'Floating dust', 'Graphics', true),
+  tog('volumetrics', 'Light shafts and flashlight beam', 'Graphics', true, 'Medium quality and above. Turn off for a little more speed.'),
   tog('batterySaver', 'Battery saver', 'Graphics', false, '30 fps, lower resolution. Good for phones.'),
   tog('showFps', 'Show performance stats', 'Graphics', false),
 
@@ -84,6 +85,7 @@ export const SCHEMA: SettingDef[] = [
 
   sel('difficulty', 'Difficulty (new games)', 'Gameplay', 'normal', opts('easy', 'normal', 'hard', 'nightmare', 'hardcore')),
   sel('scare', 'Scare intensity', 'Gameplay', 'standard', opts('relaxed', 'standard', 'brutal')),
+  sel('guidance', 'Objective guidance', 'Gameplay', 'arrow', [{ value: 'arrow', label: 'Arrow + hints' }, { value: 'hints', label: 'Hints only' }, { value: 'off', label: 'Off (no help)' }], 'Arrow points to the next door on the way to your goal. Hints say which way to go if you seem lost.'),
   tog('hunger', 'Hunger and thirst', 'Gameplay', true, 'Off in Easy regardless.'),
   tog('autosave', 'Autosave', 'Gameplay', true),
 

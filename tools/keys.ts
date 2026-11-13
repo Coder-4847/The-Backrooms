@@ -31,6 +31,10 @@ try {
     check(`${mode}: PageDown looks down`, sD.pitch < sU.pitch - 0.1, `${sU.pitch} -> ${sD.pitch}`);
     // items: digits, brackets, X/Z cycle; arrows do not change the item
     await page.keyboard.press('Digit3'); await page.waitForTimeout(250); check(`${mode}: 3 selects slot 3`, (await st()).sel === 2);
+    // the hand actually swaps to the selected item (it used to stay on the flashlight whatever you picked)
+    const inHand = () => page.evaluate(() => { const L = (window as any).__game.level; return { holding: L.viewmodel.holding, held: L.sim.inv.held }; });
+    let hh = await inHand(); for (let i = 0; i < 60 && hh.holding !== hh.held; i++) { await page.waitForTimeout(150); hh = await inHand(); }
+    check(`${mode}: the hand shows the selected item`, hh.holding === hh.held && hh.held !== 'flashlight', JSON.stringify(hh));
     await page.keyboard.press('BracketRight'); await page.waitForTimeout(250); check(`${mode}: ] selects the next slot`, (await st()).sel === 3);
     await page.keyboard.press('BracketRight'); await page.waitForTimeout(250); check(`${mode}: ] wraps to slot 1`, (await st()).sel === 0);
     await page.keyboard.press('BracketLeft'); await page.waitForTimeout(250); check(`${mode}: [ wraps back to slot 4`, (await st()).sel === 3);

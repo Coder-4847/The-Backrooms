@@ -54,6 +54,7 @@ export class Game implements Services {
   runStart = 0;
   fps = 0;
   private frameTimes: number[] = [];
+  private lastGfxToast = 0;
   /** Perf harness hook: called every rendered frame with (dt seconds, frame ms). */
   perfHook: ((dt: number, frameMs: number) => void) | null = null;
 
@@ -61,7 +62,12 @@ export class Game implements Services {
 
   audio = () => this.audioEngine;
   sounds = () => this.soundBank;
-  tier = (): TierDef => resolveTier(this.settings.value.tier, this.autoTier);
+  /** Effective tier, with the Texture quality setting capping texture resolution. */
+  tier = (): TierDef => {
+    const t = resolveTier(this.settings.value.tier, this.autoTier);
+    const cap = { low: 256, medium: 512, high: 4096 }[this.settings.value.textureQuality];
+    return t.textureSize > cap ? { ...t, textureSize: cap } : t;
+  };
 
   static async create(canvas: HTMLCanvasElement): Promise<Game> {
     const g = new Game(canvas);
@@ -132,6 +138,7 @@ export class Game implements Services {
 
   private onSettings(s: Settings, key: keyof Settings): void {
     this.input.cfg = this.inputConfig();
+    this.gfx.useSettings(s); // per-frame post settings (VHS, grain, scanlines, colour-blind...) apply immediately
     if (key === 'tier') { this.adaptive = new AdaptiveQuality(this.tier().id, s.tier === 'auto'); }
     if (GRAPHICS_KEYS.has(key)) this.gfx.configure(this.tier(), s);
     if (key === 'fpsCap' || key === 'batterySaver') this.loop.fpsCap = fpsCapOf(s);
@@ -139,6 +146,10 @@ export class Game implements Services {
     if (['textSize', 'highContrast', 'colorblind'].includes(key)) this.ui.applyAccessibility(s);
     if (['touchSize', 'touchOpacity', 'leftHanded', 'oneHanded'].includes(key)) this.input.touch.applyLayout(s.touchSize, s.touchOpacity, s.leftHanded, s.oneHanded);
     if (key === 'reduceFlicker' && this.level) this.level['lights'].reduceFlicker = s.reduceFlicker;
+    if (key === 'reduceShake' && this.level) this.level.sim.player.reduceShake = s.reduceShake;
+    if (key === 'holdToggleCrouch' && this.level) this.level.sim.player.holdCrouchToggle = s.holdToggleCrouch === 'toggle';
+    if (key === 'holdToggleSprint' && this.level) this.level.sim.player.holdSprintToggle = s.holdToggleSprint === 'toggle';
+    if (['tier', 'textureQuality', 'shadowQuality', 'drawDistance', 'dust', 'volumetrics'].includes(key) && this.level && performance.now() - this.lastGfxToast > 8000) { this.lastGfxToast = performance.now(); bus.emit('toast', { text: 'Some graphics changes take full effect at the next level or checkpoint reload.' }); }
   }
 
   /** Audio can only start after a user gesture: create lazily on first call from a click. */

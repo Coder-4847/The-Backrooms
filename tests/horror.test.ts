@@ -59,6 +59,9 @@ describe('roaming hunters and ambushes', () => {
     sim.ew.entities.length = 0;
     const before = sim.ew.entities.length;
     (sim as unknown as { ambush(): void }).ambush();
+    expect(sim.ew.entities.length).toBe(before); // Level 0 grace period: no ambush in the first three minutes
+    sim.time = 200;
+    (sim as unknown as { ambush(): void }).ambush();
     expect(sim.ew.entities.length).toBe(before + 1);
     const e = sim.ew.entities[sim.ew.entities.length - 1];
     expect(Math.hypot(e.x - sim.player.x, e.z - sim.player.z)).toBeGreaterThan(12);

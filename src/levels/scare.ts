@@ -29,6 +29,7 @@ export class Jumpscare {
   /** Called once when the scare finishes (the death flow waits on this for lethal hits). */
   onDone: (() => void) | null = null;
   roll = 0;
+  private soft = false;
   jitterX = 0; jitterY = 0;
 
   constructor(private svc: Services, private sim: LevelSim, private ev: EntityVisuals) {}
@@ -44,21 +45,25 @@ export class Jumpscare {
     // never downgrade a running scare; a lethal hit always takes over
     if (this.active && (kind === 'light' || (kind === 'heavy' && this.kind !== 'light'))) return;
     const p = this.sim.player;
+    // Reduce jump scares (accessibility): no screaming close-up for ordinary hits, a much softer one for death
+    const soft = this.svc.settings.value.reduceJumpscares;
+    if (soft && kind === 'heavy') kind = 'light';
+    this.soft = soft;
     this.kind = kind; this.e = e; this.t = 0; this.dur = DUR[kind];
     this.d0 = Math.max(1, Math.hypot(e.x - p.x, e.z - p.z));
     p.lockT = Math.max(p.lockT, LOCK[kind]);
     const { svc } = this;
     const s = svc.sounds(), a = svc.audio();
-    const power = kind === 'lethal' ? 1.25 : kind === 'heavy' ? 1 : 0.55;
+    const power = (kind === 'lethal' ? 1.25 : kind === 'heavy' ? 1 : 0.55) * (soft ? 0.35 : 1);
     if (s && a?.running) {
       s.jumpscare(a.flat('voice', 0.25), power, kind === 'lethal' ? 1.8 : 1.3);
-      if (kind !== 'light') setTimeout(() => s.tinnitus(a.flat('sfx'), kind === 'lethal' ? 6 : 3.5, 0.1), 500);
+      if (kind !== 'light' && !soft) setTimeout(() => s.tinnitus(a.flat('sfx'), kind === 'lethal' ? 6 : 3.5, 0.1), 500);
     }
     svc.gfx.glitch = 1;
     svc.input.rumble(1, 1, kind === 'lethal' ? 900 : 450);
     navigator.vibrate?.(kind === 'lethal' ? [90, 40, 160, 50, 320] : kind === 'heavy' ? [70, 30, 140] : [50]);
     this.sim.stats.fear = 1;
-    bus.emit('scare', { kind, ms: this.dur * 1000 });
+    bus.emit('scare', { kind: soft && kind !== 'lethal' ? 'soft' : kind, ms: this.dur * 1000 });
   }
 
   /** Per rendered frame. Drives the player's view directly (the sim may be frozen). */
@@ -83,7 +88,7 @@ export class Jumpscare {
     const fx = -Math.sin(p.yaw), fz = -Math.cos(p.yaw);
     this.ev.lunge = { id: e.id, x: p.x + fx * dist, z: p.z + fz * dist, yaw: p.yaw + Math.PI, y: lift, shake: 0.03 + (k === 'lethal' ? 0.03 : 0) };
     // 3. camera: FOV punch (decays), roll and jitter
-    const punch = k === 'light' ? 14 : 30;
+    const punch = (k === 'light' ? 14 : 30) * (this.soft ? 0.3 : 1);
     gfx.fovKick = punch * Math.exp(-T * 6) + (k === 'lethal' ? 6 * Math.min(1, T / 1.5) : 0);
     const amp = (k === 'light' ? 0.012 : 0.03) * Math.exp(-T * (k === 'lethal' ? 0.6 : 2.4));
     this.roll = Math.sin(T * 38) * amp + (k === 'lethal' ? Math.min(0.28, T * 0.12) : 0);

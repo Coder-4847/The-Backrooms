@@ -84,7 +84,8 @@ try {
   await page.click('.row:has-text("Rattle bottle") button'); await page.waitForTimeout(200);
   check('crafting makes a rattle bottle', await ev(() => (window as any).__game.level.sim.inv.count('distraction')) === 1);
   await page.keyboard.press('Escape'); await panelClosed();
-  await page.keyboard.press('KeyT'); await page.waitForTimeout(300);
+  await page.keyboard.press('KeyT');
+  await page.waitForFunction(() => (window as any).__game.level.sim.inv.count('distraction') === 0, null, { timeout: 8000 }).catch(() => {}); // the software renderer can be slow to tick
   check('throwing uses the distraction and makes noise', await ev(() => { const L = (window as any).__game.level; return L.sim.inv.count('distraction') === 0 && L.sim.noise.events.length > 0; }));
   // ---- Act 2: dark level, water + breath, garage breakers ----
   const startL = (id: string) => ev(async () => null).then(() => page.evaluate(async (lvl) => { const g = (window as any).__game; await g.flow.startLevel(lvl, 'ACT2-SMOKE', 'normal', { mode: 'replay', index: 7 }); g.level.sim.director.update = () => null; /* the Director now ambushes: freeze it so scripted checks stay deterministic */ return { id: g.level.def.id, dark: !!g.level.plan.dark, ents: g.level.sim.ew.entities.map((e: any) => e.def.id), water: (g.level.plan.water ?? []).length }; }, id));
