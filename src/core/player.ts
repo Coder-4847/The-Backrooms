@@ -15,6 +15,8 @@ export class Player {
   eye = PLAYER.eye;
   speed = 0;
   stamina = 100;
+  /** Something is hunting you: sprint never tires (set each step by the sim). */
+  adrenaline = false;
   crouching = false;
   sprinting = false;
   noclip = false;
@@ -74,10 +76,11 @@ export class Player {
     if (this.holdSprintToggle) { if (f.pressed.Sprint) this.sprintToggle = !this.sprintToggle; }
     else this.sprintToggle = f.down.Sprint;
     const moving = wl > 0.1;
+    if (this.adrenaline) { this.stamina = 100; this.exhausted = false; }
     this.exhausted = this.exhausted ? this.stamina < 25 : this.stamina <= 0;
     if (this.swim !== 'none') { this.crouching = this.swim === 'dive'; this.sprintToggle = false; }
     this.sprinting = this.sprintToggle && moving && !this.crouching && !this.exhausted && f.moveY > 0.3;
-    this.stamina = Math.max(0, Math.min(100, this.stamina + (this.sprinting ? -14 : (moving ? 6 : 12) * this.regenScale) * dt));
+    this.stamina = this.adrenaline ? 100 : Math.max(0, Math.min(100, this.stamina + (this.sprinting ? -14 : (moving ? 6 : 12) * this.regenScale) * dt));
 
     const target = (this.crouching ? PLAYER.crouch : this.sprinting ? PLAYER.sprint : PLAYER.walk) * this.waterMul;
     const accel = 1 - Math.exp(-10 * dt);

@@ -32,6 +32,8 @@ export interface GraphOptions {
   lootTable?: [string, number][];
   /** Where keys go: 'far' (default) favours distant side rooms; 'near' keeps them close to the route (tutorial levels). */
   keyBias?: 'far' | 'near';
+  /** Fraction of dead-end rooms allowed to stay dead ends (default 0.1): the rest get a second door so a chase can loop. */
+  deadEnds?: number;
 }
 
 /**
@@ -265,6 +267,29 @@ export function generateGraphLevel(seed: number, o: GraphOptions): LevelPlan {
   for (let i = 0; i < loopCount; i++) {
     const e = adj[loopCands[i]];
     connections.push({ id: connections.length, a: e.a, b: e.b, door: e.door, axis: e.axis, width: doorW, lock: null });
+  }
+
+  // 5b. escape routes: almost no dead ends. A room with one door gets a second one to a neighbour on the same side of
+  // every lock, so a chase can always loop round instead of trapping you. Deterministic order (no RNG consumed).
+  {
+    const deg = new Map<number, number>(rooms.map((r) => [r.id, 0]));
+    const linked = new Set(connections.map((c) => `${Math.min(c.a, c.b)}:${Math.max(c.a, c.b)}`));
+    connections.forEach((c) => { deg.set(c.a, deg.get(c.a)! + 1); deg.set(c.b, deg.get(c.b)! + 1); });
+    const deadRooms = rooms.filter((r) => deg.get(r.id) === 1).map((r) => r.id);
+    const keep = Math.round(deadRooms.length * (o.deadEnds ?? 0.1));
+    let fixed = 0;
+    for (const r of deadRooms) {
+      if (deadRooms.length - fixed <= keep || deg.get(r) !== 1) continue;
+      const cands = neighbors[r].map((k) => adj[k])
+        .filter((e) => !linked.has(`${Math.min(e.a, e.b)}:${Math.max(e.a, e.b)}`) && comp.get(e.a) === comp.get(e.b))
+        .sort((p, q) => deg.get(p.a === r ? p.b : p.a)! - deg.get(q.a === r ? q.b : q.a)! || q.span - p.span);
+      const e = cands[0];
+      if (!e) continue;
+      connections.push({ id: connections.length, a: e.a, b: e.b, door: e.door, axis: e.axis, width: doorW, lock: null });
+      linked.add(`${Math.min(e.a, e.b)}:${Math.max(e.a, e.b)}`);
+      deg.set(e.a, deg.get(e.a)! + 1); deg.set(e.b, deg.get(e.b)! + 1);
+      fixed++;
+    }
   }
 
   // kinds: supply room near the start, nests far from spawn (never on the first stretch / critical path ends), dead ends

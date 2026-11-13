@@ -90,7 +90,7 @@ const crawler: Behavior = (w, e, c, dt) => {
       const dark = p.light < 0.4;
       if (!p.hidden && d < 14 && (e.seesPlayer || d < 5) && dark && (c.director.allowHunt || d < 6)) {
         w.beginTell(e, c);
-        for (const o of w.entities) if (o !== e && o.def.id === 'crawler' && o.pack === e.pack && o.state !== 'tell' && o.state !== 'chase' && dist(o.x, o.z, e.x, e.z) < 20) { w.change(o, 'tell'); o.tellLeft = o.def.tell * c.diff.tellTime; }
+        for (const o of w.entities) if (o !== e && o.def.id === 'crawler' && o.pack === e.pack && o.state !== 'tell' && o.state !== 'chase' && dist(o.x, o.z, e.x, e.z) < 20) { w.change(o, 'tell'); o.tellLeft = Math.min(e.tellLeft + 0.1, o.def.tell * c.diff.tellTime); }
       }
       break;
     }

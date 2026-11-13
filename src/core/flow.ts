@@ -133,7 +133,7 @@ export class Flow {
         slot.flags.anchors = ['1', '2', '3', '4', '5'].filter((n) => slot.flags[`anchor:anchor${n}`]).length;
         this.g.ui.toast(`An Anchor (${slot.flags.anchors}/5). The room feels briefly solid.`); this.award();
       } else if (e.type === 'secret' && slot && campaign) { slot.flags.secret = true; this.g.ui.toast('The hum skips a beat.'); this.award(); }
-      else if (e.type === 'tell') this.hint('tell', 'Something is warning you. Break line of sight, stay quiet, and read its tell.');
+      else if (e.type === 'tell') this.hint('tell', 'It has seen you. RUN: hold Sprint (you never tire while something hunts you), break line of sight, then hide in a locker or under a desk.');
       else if (e.type === 'splash') this.hint('water', 'Water: crouch to dive and stay quiet. Surface to breathe. Splashing is loud.');
       else if (e.type === 'hide' && e.on) this.hint('hide', 'Hiding: stay quiet. Hounds can smell you if they are close.');
     });

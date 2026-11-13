@@ -58,6 +58,18 @@ export type EntityEvent =
   | { type: 'huntEnd' };
 
 const dist = (ax: number, az: number, bx: number, bz: number) => Math.hypot(ax - bx, az - bz);
+/** Beyond this range a tell is a "spotted you" roar, not an attack wind-up, and lasts at most DETECT_TELL seconds. */
+const DETECT_TELL_RANGE = 4.5, DETECT_TELL = 0.45;
+
+/**
+ * Chase speed cap as a fraction of the player's sprint (4 m/s): you can always outrun a hunter if you keep going and
+ * do not run into it. Easy 0.8, Normal 0.88, Hard 0.93, Nightmare/Hardcore 0.97. Water creatures are exempt (you swim).
+ */
+export function chaseCap(entitySpeed: number): number {
+  const f = entitySpeed <= 0.85 ? 0.8 : entitySpeed <= 1.1 ? 0.88 : entitySpeed <= 1.2 ? 0.93 : 0.97;
+  return 4.0 * f;
+}
+const WATER = new Set(['leviathan', 'drowned', 'leech']);
 
 export class EntityWorld {
   entities: Entity[] = [];
@@ -148,7 +160,11 @@ export class EntityWorld {
 
   // ---- movement ----
 
+  /** Set each update from the difficulty: the most a hostile entity may move per second (see chaseCap). */
+  private speedCap = Infinity;
+
   steer(e: Entity, tx: number, tz: number, speed: number, dt: number): void {
+    if (e.def.damage > 0 && !WATER.has(e.def.id)) speed = Math.min(speed, this.speedCap);
     const dx = tx - e.x, dz = tz - e.z, d = Math.hypot(dx, dz);
     if (d < 1e-4) { e.speed = 0; return; }
     const step = Math.min(d, speed * dt);
@@ -198,6 +214,7 @@ export class EntityWorld {
   // ---- main update ----
 
   update(dt: number, c: AiContext): void {
+    this.speedCap = chaseCap(c.diff.entitySpeed);
     for (const e of this.entities) {
       e.stateTime += dt;
       e.cooldown = Math.max(0, e.cooldown - dt);
@@ -219,6 +236,9 @@ export class EntityWorld {
   beginTell(e: Entity, c: AiContext): void {
     this.change(e, 'tell');
     e.tellLeft = Math.max(0.38, e.def.tell * c.diff.tellTime);
+    // spotted from a distance: no standing stare-down, just a short roar and it comes for you. The full-length
+    // tell stays for the wind-up right before a hit, so a bite or a swing is still telegraphed and dodgeable.
+    if (dist(e.x, e.z, c.player.x, c.player.z) > DETECT_TELL_RANGE) e.tellLeft = Math.min(e.tellLeft, DETECT_TELL);
     e.tellStarted = true;
     this.emit({ type: 'tell', entity: e });
   }
@@ -350,7 +370,7 @@ export class EntityWorld {
     this.beginTell(e, c);
     for (const o of this.entities) {
       if (o === e || o.pack !== e.pack || o.state === 'tell' || o.state === 'chase' || o.state === 'flee') continue;
-      if (dist(o.x, o.z, e.x, e.z) < 25) { this.change(o, 'tell'); o.tellLeft = o.def.tell * c.diff.tellTime * 1.1; o.tellStarted = false; }
+      if (dist(o.x, o.z, e.x, e.z) < 25) { this.change(o, 'tell'); o.tellLeft = Math.min(e.tellLeft + 0.1, o.def.tell * c.diff.tellTime * 1.1); o.tellStarted = false; }
     }
   }
 

@@ -10,7 +10,7 @@ import { Rng, deriveSeed } from '../gen/rng';
 import { LEVEL_NOTES } from '../story/notes';
 import type { HideSpot, ItemSpawn, LevelDef, LevelPlan } from '../gen/types';
 
-const NOTE_COUNT = 6;
+const NOTE_COUNT = 4; // a handful of story notes pinned to walls, not litter on every floor
 
 function dress(plan: LevelPlan): LevelPlan {
   const rng = new Rng(deriveSeed(plan.seed, 'level0:dress'));

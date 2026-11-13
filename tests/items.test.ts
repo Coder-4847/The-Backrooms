@@ -5,6 +5,8 @@ import { level0 } from '../src/levels/level0';
 import { emptyFrame } from '../src/core/input/logic';
 import { guidePoint, levelObjective } from '../src/levels/objective';
 import { defaultSettings, sanitizeSettings } from '../src/core/settings';
+import { levelById } from '../src/levels/registry';
+import { pinNotes } from '../src/gen/clues';
 
 describe('hotbar and held items', () => {
   it('switching slots changes the held item (1-4, next / previous)', () => {
@@ -72,5 +74,40 @@ describe('Level 0 guidance', () => {
     expect(defaultSettings().guidance).toBe('arrow');
     expect(sanitizeSettings({ guidance: 'off' }).guidance).toBe('off');
     expect(sanitizeSettings({ guidance: 'bogus' }).guidance).toBe('arrow');
+  });
+});
+
+describe('chases are survivable', () => {
+  it('sprint never tires while something hunts you', () => {
+    const sim = new LevelSim(level0.generate(77), 'normal', { spawnEntities: false });
+    const p = sim.player;
+    const e = sim.ew.spawn('hound', p.x + 8, p.z); e.state = 'chase'; e.target = { x: p.x, z: p.z };
+    const f = emptyFrame(); f.moveY = 1; f.down.Sprint = true;
+    for (let i = 0; i < 60 * 20; i++) { sim.step(f); if (sim.dead) break; }
+    if (!sim.dead) expect(p.stamina).toBe(100);
+    sim.ew.entities.length = 0;
+    for (let i = 0; i < 60 * 3; i++) sim.step(f);
+    expect(p.adrenaline).toBe(false);
+    expect(p.stamina).toBeLessThan(100); // without a hunter sprinting drains again
+  });
+
+  it('levels have (almost) no dead ends', () => {
+    for (const id of ['level0', 'level1', 'level2', 'level4', 'level6']) {
+      for (const seed of [3, 42, 777]) {
+        const plan = levelById(id)!.generate(seed);
+        const deg = new Map<number, number>();
+        for (const c of plan.connections) { deg.set(c.a, (deg.get(c.a) ?? 0) + 1); deg.set(c.b, (deg.get(c.b) ?? 0) + 1); }
+        const dead = plan.rooms.filter((r) => (deg.get(r.id) ?? 0) <= 1).length;
+        expect(dead / plan.rooms.length).toBeLessThan(0.1); // was ~15% before the escape-route pass
+      }
+    }
+  });
+
+  it('notes hang on walls (not the floor) once pinned', () => {
+    const plan = level0.generate(77);
+    const pins = pinNotes(plan);
+    const notes = plan.items.filter((i) => i.kind === 'note');
+    expect(pins.size).toBe(notes.length);
+    for (const n of notes) { const r = plan.rooms[n.room]; const edge = Math.min(n.pos.x - r.x, r.x + r.w - n.pos.x, n.pos.z - r.z, r.z + r.d - n.pos.z); expect(edge).toBeLessThan(0.2); }
   });
 });
