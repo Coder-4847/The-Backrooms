@@ -603,8 +603,10 @@ export class LevelScene {
     this.flash.intensity = FLASH_CD * flashOut; // never toggle `visible` on lights: it recompiles every shader
     this.flash.shadow.autoUpdate = flashOut > 0.01;
     cam.updateMatrixWorld();
-    // the hand shows whatever is selected on the hotbar (lowered while hiding or during a scare)
-    const held = this.sim.hidden || this.scare.active ? null : this.sim.inv.held;
+    // the hand shows whatever is selected on the hotbar (lowered while hiding or during a scare). The menu backdrop
+    // flies a free camera (noclip) and shows no hand at all. Re-attach every frame: the camera is shared between scenes.
+    if (this.viewmodel) this.viewmodel.attachTo(cam);
+    const held = this.sim.hidden || this.scare.active || p.noclip ? null : this.sim.inv.held;
     this.viewmodel?.update(dt, held, flashOut, p.yaw, p.pitch, Math.min(1, p.speed / 3), this.time);
     this.ev.sync(this.sim.ew, this.time, dt);
     this.fx.update(dt, cam, flashOut > 0.4);

@@ -66,6 +66,9 @@ export class InputManager {
     window.addEventListener('blur', () => this.keys.clear());
     el.addEventListener('mousemove', this.onMouseMove);
     el.addEventListener('click', this.onClick);
+    // mouse buttons act like keys ("Mouse0" = left) while the pointer is locked, so they can be bound (Use item = left click)
+    el.addEventListener('mousedown', (e) => { if (!this.locked) return; const code = `Mouse${e.button}`; this.note('kbm'); this.keys.add(code); this.latched.add(code); });
+    window.addEventListener('mouseup', (e) => { this.keys.delete(`Mouse${e.button}`); });
     el.addEventListener('wheel', (e) => { this.wheelDir = e.deltaY > 0 ? 1 : e.deltaY < 0 ? -1 : 0; }, { passive: true });
     document.addEventListener('pointerlockchange', () => { this.locked = document.pointerLockElement === el; });
     window.addEventListener('pointerdown', (e) => { if (e.pointerType === 'touch') this.note('touch'); }, { passive: true });

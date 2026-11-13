@@ -29,7 +29,7 @@ npm run build && npm run preview
 | Flashlight / camcorder night vision | G / V | Y / D-pad up | ☼ |
 | Throw (distraction) | T | RB | ↗ |
 | Hotbar / next item | 1-4, [ ] or Z X / wheel | LT / RT | tap the slot |
-| Use held item (drink, eat, recharge; toggles the flashlight or night vision when held) | F | X (□) | tap the selected slot again, or USE |
+| Use held item (drink, eat, recharge; toggles the flashlight or night vision when held) | F or left click | X (□) | tap the selected slot again, or USE |
 | Lean / hold breath | Q R / B | D-pad / LB | |
 | Dive (in deep water) | Crouch | R3 | ▽ |
 | Backpack / journal | I or Tab / J | View / D-pad left | ▤ |

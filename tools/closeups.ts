@@ -17,7 +17,8 @@ try {
   const page = await openGame(browser, url, 1024, 576);
   await page.evaluate(() => { (window as any).__entLow = { hound: 1, crawler: 1, leech: 1 }; });
   await page.evaluate(async ({ tier }) => { const g = (window as any).__game; g.settings.set('tier', tier); await g.startLevel('level0', 7, 'normal'); }, { tier });
-  const settle = () => page.evaluate(() => new Promise<void>((r) => { let n = 0; const f = () => (++n >= 6 ? r() : requestAnimationFrame(f)); requestAnimationFrame(f); }));
+  const frames = Number(arg('frames', '6'));
+  const settle = () => page.evaluate((k) => new Promise<void>((r) => { let n = 0; const f = () => (++n >= k ? r() : requestAnimationFrame(f)); requestAnimationFrame(f); }), frames);
   for (const id of ents) {
     await page.evaluate(({ id, tell, dist }) => {
       const g = (window as any).__game, s = g.level.sim, p = s.player, plan = g.level.plan;

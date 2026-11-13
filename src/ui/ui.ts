@@ -387,7 +387,7 @@ export class Ui {
     }
     // held-item label: what is in your hand and what the use key does with it; fades after a few seconds
     const dev = this.game.input.device, binds = this.game.settings.value.bindings;
-    const useKey = dev === 'touch' ? 'tap the slot again' : `[${glyphFor('UseItem', dev, binds, this.game.input.padLayout)}]`;
+    const useKey = dev === 'touch' ? 'tap the slot again' : dev === 'kbm' && binds.UseItem.kb.includes('Mouse0') && binds.UseItem.kb[0] !== 'Mouse0' ? `[${glyphFor('UseItem', dev, binds)}] or click to` : `[${glyphFor('UseItem', dev, binds, this.game.input.padLayout)}]`;
     const verb = !held ? '' : held === 'flashlight' ? (sim.flash.on ? 'turn off' : 'turn on') : held === 'camcorder' ? (sim.cam.nightVision ? 'night vision off' : 'night vision') : itemDef(held).use || held === 'radio' || held === 'tripline' ? ({ battery: 'recharge flashlight', glowstick: 'snap and drop', flare: 'light it', bandage: 'patch up', tripline: 'set it', radio: 'broadcast lure' } as Record<string, string>)[held] ?? 'use' : '';
     const hk = `${held}|${verb}|${dev}`;
     if (hk !== this.heldKey) { this.heldKey = hk; this.heldShownAt = performance.now(); this.heldEl.textContent = held ? `${itemDef(held).name}${verb ? `  ·  ${useKey} ${verb}` : ''}` : ''; }

@@ -163,7 +163,7 @@ export class Flow {
     const touch = this.g.input.device === 'touch', pad = this.g.input.device === 'gamepad';
     const act = touch ? 'tap the button that appears' : pad ? 'press A' : 'press E';
     setTimeout(() => this.hint('goal', `Goal: find the exit and get out. Explore, ${act} near notes, keys and doors, and read the paper scraps people left. They are clues.`), 5200);
-    this.hint('move', touch ? 'Left thumb moves, right thumb looks. Tap a slot to pick an item, tap it again (or USE) to use it. Buttons appear when something is near.' : pad ? 'Left stick moves, right stick looks. A interacts, Y toggles the flashlight.' : 'WASD or the arrow keys to move, mouse or Left/Right arrows to look. 1-4 or [ ] pick an item (press F to use it), G flashlight, E interact, Shift sprint, C crouch.');
+    this.hint('move', touch ? 'Left thumb moves, right thumb looks. Tap a slot to pick an item, tap it again (or USE) to use it. Buttons appear when something is near.' : pad ? 'Left stick moves, right stick looks. A interacts, Y toggles the flashlight.' : 'WASD or the arrow keys to move, mouse or Left/Right arrows to look. 1-4, [ ] or the wheel pick an item (F or left click uses it), G flashlight, E interact, Shift sprint, C crouch.');
     setTimeout(() => { if (scene.sim.flash.battery < 100) this.hint('battery', 'The flashlight drains. Wiggle the mouse (or shake) when it is low, and pick up batteries.'); }, 120000);
   }
 
